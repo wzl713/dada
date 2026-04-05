@@ -1,0 +1,448 @@
+-- ==========================================
+-- Dada（搭搭）完整数据库定义
+-- 即时拼局平台 - 所有表、视图、触发器、RLS、Storage
+-- 在 Supabase SQL Editor 中执行
+-- ==========================================
+-- 依赖：activities 和 activity_members 表需先存在
+-- （由初始建表 SQL 创建，见下方 §1）
+-- ==========================================
+
+
+-- ==========================================
+-- §1  核心业务表
+-- ==========================================
+
+-- 1a. profiles 用户表
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  nickname TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 1b. friendships 好友关系表
+CREATE TABLE IF NOT EXISTS friendships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  to_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS friendships_unique_pair
+  ON friendships (LEAST(from_user_id, to_user_id), GREATEST(from_user_id, to_user_id))
+  WHERE status != 'rejected';
+
+DO $$ BEGIN
+  ALTER TABLE friendships ADD CONSTRAINT friendships_no_self CHECK (from_user_id != to_user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE friendships ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can view their friendships" ON friendships FOR SELECT USING (auth.uid() IN (from_user_id, to_user_id));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can send friend requests" ON friendships FOR INSERT WITH CHECK (auth.uid() = from_user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can update received requests" ON friendships FOR UPDATE USING (auth.uid() = to_user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 1c. messages 私信表
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  receiver_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+DO $$ BEGIN
+  ALTER TABLE messages ADD CONSTRAINT messages_no_self CHECK (sender_id != receiver_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS messages_chat_idx
+  ON messages (LEAST(sender_id, receiver_id), GREATEST(sender_id, receiver_id), created_at);
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can view their messages" ON messages FOR SELECT USING (auth.uid() IN (sender_id, receiver_id));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can send messages" ON messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 1d. notifications 通知表
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('join_activity', 'friend_request', 'friend_accepted', 'new_message', 'new_comment')),
+  title TEXT NOT NULL,
+  content TEXT,
+  activity_id UUID REFERENCES activities(id) ON DELETE CASCADE,
+  from_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can view own notifications" ON notifications FOR SELECT USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 1e. comments 活动评论表
+CREATE TABLE IF NOT EXISTS comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS comments_activity_idx ON comments (activity_id, created_at);
+
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Comments are viewable by everyone" ON comments FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can create comments" ON comments FOR INSERT WITH CHECK (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can delete own comments" ON comments FOR DELETE USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 1f. activity_photos 活动照片表
+CREATE TABLE IF NOT EXISTS activity_photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  activity_id UUID NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  photo_url TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS activity_photos_activity_idx ON activity_photos (activity_id, created_at);
+
+ALTER TABLE activity_photos ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Photos are viewable by everyone" ON activity_photos FOR SELECT USING (true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can upload photos" ON activity_photos FOR INSERT WITH CHECK (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can delete own photos" ON activity_photos FOR DELETE USING (auth.uid() = user_id);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+
+-- ==========================================
+-- §2  activities 表扩展字段
+-- ==========================================
+
+DO $$ BEGIN
+  ALTER TABLE activities ADD COLUMN category TEXT DEFAULT '其他';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE activities ADD COLUMN cover_url TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- 积分奖励（参与/组织活动获得积分）
+DO $$ BEGIN
+  ALTER TABLE activities ADD COLUMN points_reward INT DEFAULT 10;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+-- 活动相册 Storage 桶
+INSERT INTO storage.buckets (id, name, public) VALUES ('photos', 'photos', true) ON CONFLICT (id) DO NOTHING;
+
+-- photos 桶策略
+DO $$ BEGIN CREATE POLICY "Photos are publicly viewable" ON storage.objects FOR SELECT USING (bucket_id = 'photos'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Authenticated users can upload photos" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'photos' AND auth.role() = 'authenticated'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can update own photos" ON storage.objects FOR UPDATE USING (bucket_id = 'photos' AND auth.role() = 'authenticated'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can delete own photos" ON storage.objects FOR DELETE USING (bucket_id = 'photos' AND auth.role() = 'authenticated'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- profiles 扩展：积分和信誉分
+DO $$ BEGIN
+  ALTER TABLE profiles ADD COLUMN points INT DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE profiles ADD COLUMN reputation INT DEFAULT 100;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+
+-- ==========================================
+-- §3  视图：活动 + 参与人数
+-- ==========================================
+
+DROP VIEW IF EXISTS activities_with_count;
+
+CREATE OR REPLACE VIEW activities_with_count AS
+SELECT
+  a.*,
+  COALESCE(mc.cnt, 0) AS member_count
+FROM activities a
+LEFT JOIN (
+  SELECT activity_id, COUNT(*) AS cnt
+  FROM activity_members
+  GROUP BY activity_id
+) mc ON mc.activity_id = a.id;
+
+
+-- ==========================================
+-- §4  触发器与函数
+-- ==========================================
+
+-- 4a. 新用户注册自动创建 profile
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, nickname, created_at)
+  VALUES (
+    NEW.id,
+    COALESCE(SPLIT_PART(NEW.email, '@', 1), '新用户'),
+    NOW()
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 4b. 加入活动时通知创建者
+CREATE OR REPLACE FUNCTION public.notify_on_join()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.user_id != (SELECT creator_id FROM activities WHERE id = NEW.activity_id) THEN
+    INSERT INTO public.notifications (user_id, type, title, content, activity_id, from_user_id)
+    VALUES (
+      (SELECT creator_id FROM activities WHERE id = NEW.activity_id),
+      'join_activity',
+      '有人加入了你的活动',
+      COALESCE(
+        (SELECT nickname FROM profiles WHERE id = NEW.user_id),
+        '新用户'
+      ) || ' 加入了你的活动「' ||
+      COALESCE(
+        (SELECT title FROM activities WHERE id = NEW.activity_id),
+        '未知活动'
+      ) || '」',
+      NEW.activity_id,
+      NEW.user_id
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_activity_join ON activity_members;
+CREATE TRIGGER on_activity_join
+  AFTER INSERT ON activity_members
+  FOR EACH ROW EXECUTE FUNCTION public.notify_on_join();
+
+-- 4c. 好友申请时通知对方
+CREATE OR REPLACE FUNCTION public.notify_on_friend_request()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.notifications (user_id, type, title, content, from_user_id)
+  VALUES (
+    NEW.to_user_id,
+    'friend_request',
+    '收到好友申请',
+    COALESCE(
+      (SELECT nickname FROM profiles WHERE id = NEW.from_user_id),
+      '新用户'
+    ) || ' 申请添加你为好友',
+    NEW.from_user_id
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_friend_request ON friendships;
+CREATE TRIGGER on_friend_request
+  AFTER INSERT ON friendships
+  FOR EACH ROW EXECUTE FUNCTION public.notify_on_friend_request();
+
+-- 4d. 好友通过时通知申请人
+CREATE OR REPLACE FUNCTION public.notify_on_friend_accepted()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'accepted' AND OLD.status = 'pending' THEN
+    INSERT INTO public.notifications (user_id, type, title, content, from_user_id)
+    VALUES (
+      NEW.from_user_id,
+      'friend_accepted',
+      '好友申请已通过',
+      COALESCE(
+        (SELECT nickname FROM profiles WHERE id = NEW.to_user_id),
+        '新用户'
+      ) || ' 同意了你的好友申请',
+      NEW.to_user_id
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_friend_accepted ON friendships;
+CREATE TRIGGER on_friend_accepted
+  AFTER UPDATE ON friendships
+  FOR EACH ROW EXECUTE FUNCTION public.notify_on_friend_accepted();
+
+-- 4e. 评论活动时通知创建者
+CREATE OR REPLACE FUNCTION public.notify_on_comment()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.user_id != (SELECT creator_id FROM activities WHERE id = NEW.activity_id) THEN
+    INSERT INTO public.notifications (user_id, type, title, content, activity_id, from_user_id)
+    VALUES (
+      (SELECT creator_id FROM activities WHERE id = NEW.activity_id),
+      'new_comment',
+      '活动收到新评论',
+      LEFT(NEW.content, 50),
+      NEW.activity_id,
+      NEW.user_id
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_activity_comment ON comments;
+CREATE TRIGGER on_activity_comment
+  AFTER INSERT ON comments
+  FOR EACH ROW EXECUTE FUNCTION public.notify_on_comment();
+
+-- 4f. 加入活动获得积分
+CREATE OR REPLACE FUNCTION public.award_join_points()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE public.profiles SET points = COALESCE(points, 0) + 5 WHERE id = NEW.user_id;
+  UPDATE public.profiles SET points = COALESCE(points, 0) + 2 WHERE id = (SELECT creator_id FROM activities WHERE id = NEW.activity_id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_join_points ON activity_members;
+CREATE TRIGGER on_join_points
+  AFTER INSERT ON activity_members
+  FOR EACH ROW EXECUTE FUNCTION public.award_join_points();
+
+-- 4g. 修复函数（一次性使用，SECURITY DEFINER 绕过 RLS）
+CREATE OR REPLACE FUNCTION public.fix_missing_profiles()
+RETURNS void AS $$
+BEGIN
+  INSERT INTO public.profiles (id, nickname, created_at)
+  SELECT
+    u.id,
+    COALESCE(SPLIT_PART(u.email, '@', 1), '用户' || LEFT(u.id::text, 6)),
+    u.created_at
+  FROM auth.users u
+  LEFT JOIN public.profiles p ON p.id = u.id
+  WHERE p.id IS NULL
+  ON CONFLICT (id) DO NOTHING;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.fix_empty_nicknames()
+RETURNS void AS $$
+BEGIN
+  UPDATE public.profiles
+  SET nickname = COALESCE(
+    SPLIT_PART((SELECT email FROM auth.users WHERE id = profiles.id), '@', 1),
+    '用户' || LEFT(profiles.id::text, 6)
+  )
+  WHERE nickname IS NULL OR nickname = '' OR nickname LIKE '用户%';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- ==========================================
+-- §5  Storage 配置
+-- ==========================================
+
+-- 5a. 创建存储桶
+INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('covers', 'covers', true) ON CONFLICT (id) DO NOTHING;
+
+-- 5b. avatars 桶策略
+DO $$ BEGIN CREATE POLICY "Avatars are publicly viewable" ON storage.objects FOR SELECT USING (bucket_id = 'avatars'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can upload own avatar" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can update own avatar" ON storage.objects FOR UPDATE USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can delete own avatar" ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- 5c. covers 桶策略
+DO $$ BEGIN CREATE POLICY "Covers are publicly viewable" ON storage.objects FOR SELECT USING (bucket_id = 'covers'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Authenticated users can upload covers" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'covers' AND auth.role() = 'authenticated'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can update own covers" ON storage.objects FOR UPDATE USING (bucket_id = 'covers' AND auth.role() = 'authenticated'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE POLICY "Users can delete own covers" ON storage.objects FOR DELETE USING (bucket_id = 'covers' AND auth.role() = 'authenticated'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+
+-- ==========================================
+-- 完成！
+-- 表：profiles, friendships, messages, notifications, comments, activity_photos
+-- 视图：activities_with_count
+-- 触发器：handle_new_user, notify_on_join, notify_on_friend_request, notify_on_friend_accepted, notify_on_comment, award_join_points
+-- 修复函数：fix_missing_profiles, fix_empty_nicknames
+-- Storage：avatars, covers, photos
+-- ==========================================
