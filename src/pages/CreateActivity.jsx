@@ -1,121 +1,189 @@
-import { useState, useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
 import { uploadImage, compressImage } from '../utils/upload'
-import { useToast } from '../components/Toast'
+import { useToast } from '../components/toast-context'
 
-const CATEGORIES = ['运动', '学习', '美食', '游戏', '户外', '娱乐', '社交', '其他']
+const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
+const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先']
 
 const TEMPLATES = [
-  { title: '周末篮球局', description: '一起来打篮球！自带装备，约两小时。', category: '运动', location: '篮球场', max_members: 10 },
-  { title: '一起学习打卡', description: '找个安静的咖啡馆一起学习，互相监督。', category: '学习', location: '咖啡馆', max_members: 4 },
-  { title: '剧本杀组局', description: '缺人开本！快来报名。', category: '娱乐', location: '剧本杀店', max_members: 8 },
-  { title: '户外徒步', description: '周末一起去爬山，呼吸新鲜空气。', category: '户外', location: '集合点待定', max_members: 15 },
+  {
+    title: '今晚一起看电影',
+    description: '临时组个电影搭子，看完就散，不尬聊。',
+    category: '电影',
+    location: '商场电影院',
+    max_members: 2,
+    meetup_note: '先在影院门口集合，票各自买。',
+  },
+  {
+    title: '下班一起吃饭',
+    description: '找 1-2 个人附近吃饭，AA，不拖拉。',
+    category: '吃饭',
+    location: '地铁站附近',
+    max_members: 3,
+    meetup_note: '默认 AA，迟到请提前说。',
+  },
+  {
+    title: '周末羽毛球局',
+    description: '缺搭子一起打球，两小时左右，自带拍。',
+    category: '运动',
+    location: '羽毛球馆',
+    max_members: 3,
+    meetup_note: '建议提前 10 分钟到场热身。',
+  },
+  {
+    title: '咖啡馆自习',
+    description: '安静学习 2 小时，中途少聊天，互相监督。',
+    category: '自习',
+    location: '安静咖啡馆',
+    max_members: 3,
+    meetup_note: '默认安静模式，交流控制在休息时间。',
+  },
 ]
+
+const DEFAULT_FORM = {
+  title: '',
+  description: '',
+  location: '',
+  start_time: '',
+  max_members: 2,
+  category: '',
+  gender_requirement: '不限',
+  meetup_note: '',
+  safety_notice: '仅限正常线下搭子活动，禁止骚扰、交易和任何越界行为。',
+}
 
 export default function CreateActivity() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
-  const [form, setForm] = useState({ title: '', description: '', location: '', start_time: '', max_members: 2, category: '' })
+  const [form, setForm] = useState(DEFAULT_FORM)
   const [coverPreview, setCoverPreview] = useState(null)
   const [coverFile, setCoverFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const fileInputRef = useRef(null)
 
-  const handleCoverSelect = async (e) => {
-    const file = e.target.files?.[0]
+  async function handleCoverSelect(event) {
+    const file = event.target.files?.[0]
     if (!file) return
+
     const compressed = await compressImage(file, 1200, 0.8)
     setCoverFile(compressed)
+
     const reader = new FileReader()
     reader.onload = (ev) => setCoverPreview(ev.target.result)
     reader.readAsDataURL(compressed)
   }
 
-  const useTemplate = (t) => {
-    setForm({
-      title: t.title,
-      description: t.description,
-      location: t.location,
+  function applyTemplate(template) {
+    setForm((prev) => ({
+      ...prev,
+      title: template.title,
+      description: template.description,
+      location: template.location,
       start_time: '',
-      max_members: t.max_members,
-      category: t.category,
-    })
+      max_members: template.max_members,
+      category: template.category,
+      meetup_note: template.meetup_note,
+    }))
     setShowTemplates(false)
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  function update(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault()
     setLoading(true)
 
     let coverUrl = null
     if (coverFile) {
-      const tempId = crypto.randomUUID()
-      coverUrl = await uploadImage(coverFile, 'covers', tempId)
+      coverUrl = await uploadImage(coverFile, 'covers', `${user.id}/covers`)
     }
 
-    const { data, error } = await supabase.from('activities').insert({
+    const payload = {
       ...form,
       creator_id: user.id,
       start_time: new Date(form.start_time).toISOString(),
       category: form.category || '其他',
-      cover_url: coverUrl || null,
-    }).select()
+      cover_url: coverUrl,
+    }
 
+    const { error } = await supabase.from('activities').insert(payload)
     setLoading(false)
 
     if (error) {
-      toast.error('发布失败')
-    } else {
-      toast.success('发布成功！')
-      navigate('/')
+      toast.error(error.message || '发布失败')
+      return
     }
-  }
 
-  const update = (field, value) => setForm({ ...form, [field]: value })
+    toast.success('活动已发布，等人来加入吧')
+    navigate('/')
+  }
 
   return (
     <div>
-      <Navbar title="发布活动" showBack />
+      <Navbar title="发起搭子局" showBack />
 
       <div className="container" style={{ paddingTop: 12, paddingBottom: 90 }}>
-        {/* 模板入口 */}
         <button
+          type="button"
           className="card"
           style={{
-            width: '100%', textAlign: 'left', border: '2px dashed var(--border)',
-            background: 'transparent', cursor: 'pointer', marginBottom: 16,
-            display: 'flex', alignItems: 'center', gap: 12,
+            width: '100%',
+            textAlign: 'left',
+            border: '2px dashed var(--border)',
+            background: 'transparent',
+            cursor: 'pointer',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
           }}
-          onClick={() => setShowTemplates(!showTemplates)}
+          onClick={() => setShowTemplates((prev) => !prev)}
         >
           <span style={{ fontSize: 24 }}>⚡</span>
           <div>
-            <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--accent)' }}>使用模板快速发布</div>
-            <div style={{ fontSize: 12, color: '#bbb', marginTop: 2 }}>一键填充热门活动信息</div>
+            <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--accent)' }}>套一个模板快速发起</div>
+            <div style={{ fontSize: 12, color: '#bbb', marginTop: 2 }}>先把活动发出去，再慢慢优化细节。</div>
           </div>
         </button>
 
         {showTemplates && (
           <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {TEMPLATES.map((t, i) => (
+            {TEMPLATES.map((template) => (
               <button
-                key={i}
+                key={template.title}
+                type="button"
                 className="card"
                 style={{
-                  width: '100%', textAlign: 'left', cursor: 'pointer', padding: 14,
-                  display: 'flex', alignItems: 'center', gap: 12,
+                  width: '100%',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  padding: 14,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
                 }}
-                onClick={() => useTemplate(t)}
+                onClick={() => applyTemplate(template)}
               >
-                <span style={{ fontSize: 28 }}>{t.category === '运动' ? '🏀' : t.category === '学习' ? '📖' : t.category === '娱乐' ? '🎭' : '🏔️'}</span>
+                <span style={{ fontSize: 28 }}>
+                  {template.category === '电影'
+                    ? '🎬'
+                    : template.category === '吃饭'
+                      ? '🍜'
+                      : template.category === '运动'
+                        ? '🏸'
+                        : '📚'}
+                </span>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{t.title}</div>
-                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>{t.description.slice(0, 25)}...</div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{template.title}</div>
+                  <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>{template.description}</div>
                 </div>
                 <span style={{ color: '#ccc' }}>→</span>
               </button>
@@ -124,69 +192,170 @@ export default function CreateActivity() {
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 封面图 */}
           <div
             onClick={() => fileInputRef.current?.click()}
             style={{
-              width: '100%', height: 180, borderRadius: 16,
+              width: '100%',
+              height: 180,
+              borderRadius: 16,
               border: coverPreview ? 'none' : '2px dashed var(--border)',
               background: coverPreview ? `url(${coverPreview}) center/cover no-repeat` : '#fafafa',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', overflow: 'hidden', position: 'relative',
-              transition: 'all 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              overflow: 'hidden',
+              position: 'relative',
             }}
           >
             {!coverPreview && (
               <>
                 <span style={{ fontSize: 32, marginBottom: 8 }}>📷</span>
-                <span style={{ fontSize: 14, color: '#bbb' }}>添加封面图（可选）</span>
+                <span style={{ fontSize: 14, color: '#bbb' }}>添加封面图，可选</span>
               </>
             )}
             {coverPreview && (
-              <div style={{
-                position: 'absolute', bottom: 8, right: 8,
-                background: 'rgba(0,0,0,0.6)', color: '#fff',
-                padding: '4px 12px', borderRadius: 12, fontSize: 12,
-              }}>
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  right: 8,
+                  background: 'rgba(0,0,0,0.6)',
+                  color: '#fff',
+                  padding: '4px 12px',
+                  borderRadius: 12,
+                  fontSize: 12,
+                }}
+              >
                 更换封面
               </div>
             )}
           </div>
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" style={{ display: 'none' }} onChange={handleCoverSelect} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            style={{ display: 'none' }}
+            onChange={handleCoverSelect}
+          />
 
-          <input className="input" placeholder="活动标题（必填）" value={form.title} onChange={e => update('title', e.target.value)} required />
+          <input
+            className="input"
+            placeholder="做什么？例如：今晚一起看《沙丘》"
+            value={form.title}
+            onChange={(e) => update('title', e.target.value)}
+            required
+          />
 
-          <textarea className="input" placeholder="活动描述（可选）" rows={3} value={form.description} onChange={e => update('description', e.target.value)} />
+          <textarea
+            className="input"
+            placeholder="补充下节奏、费用和预期，比如：看完就散、AA、不尬聊。"
+            rows={3}
+            value={form.description}
+            onChange={(e) => update('description', e.target.value)}
+          />
 
-          <input className="input" placeholder="活动地点（必填）" value={form.location} onChange={e => update('location', e.target.value)} required />
+          <input
+            className="input"
+            placeholder="在哪里集合？例如：大悦城 5 楼影院门口"
+            value={form.location}
+            onChange={(e) => update('location', e.target.value)}
+            required
+          />
 
-          <input className="input" type="datetime-local" value={form.start_time} onChange={e => update('start_time', e.target.value)} required />
+          <input
+            className="input"
+            type="datetime-local"
+            value={form.start_time}
+            onChange={(e) => update('start_time', e.target.value)}
+            required
+          />
 
           <div>
-            <label style={{ fontSize: 12, color: '#999', marginBottom: 6, display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>最大人数</label>
-            <input className="input" type="number" min="2" max="99" value={form.max_members} onChange={e => update('max_members', parseInt(e.target.value) || 2)} required />
+            <label style={{ fontSize: 12, color: '#999', marginBottom: 6, display: 'block', fontWeight: 600 }}>
+              人数上限
+            </label>
+            <input
+              className="input"
+              type="number"
+              min="2"
+              max="6"
+              value={form.max_members}
+              onChange={(e) => update('max_members', parseInt(e.target.value, 10) || 2)}
+              required
+            />
           </div>
 
           <div>
-            <label style={{ fontSize: 12, color: '#999', marginBottom: 8, display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>活动类型</label>
+            <label style={{ fontSize: 12, color: '#999', marginBottom: 8, display: 'block', fontWeight: 600 }}>
+              活动场景
+            </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {CATEGORIES.map(c => (
+              {CATEGORIES.map((item) => (
                 <button
-                  key={c} type="button"
+                  key={item}
+                  type="button"
+                  onClick={() => update('category', item)}
                   style={{
-                    padding: '8px 16px', borderRadius: 20, fontSize: 14,
-                    border: form.category === c ? 'none' : '1.5px solid #e8e8e8',
-                    background: form.category === c ? 'var(--primary)' : '#fff',
-                    color: form.category === c ? '#fff' : '#666',
-                    cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit',
+                    padding: '8px 16px',
+                    borderRadius: 20,
+                    fontSize: 14,
+                    border: form.category === item ? 'none' : '1.5px solid #e8e8e8',
+                    background: form.category === item ? 'var(--primary)' : '#fff',
+                    color: form.category === item ? '#fff' : '#666',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
                   }}
-                  onClick={() => update('category', c)}
                 >
-                  {c}
+                  {item}
                 </button>
               ))}
             </div>
           </div>
+
+          <div>
+            <label style={{ fontSize: 12, color: '#999', marginBottom: 8, display: 'block', fontWeight: 600 }}>
+              性别要求
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {GENDER_OPTIONS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => update('gender_requirement', item)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 20,
+                    fontSize: 14,
+                    border: form.gender_requirement === item ? 'none' : '1.5px solid #e8e8e8',
+                    background: form.gender_requirement === item ? 'var(--accent)' : '#fff',
+                    color: form.gender_requirement === item ? '#fff' : '#666',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="集合方式 / 是否 AA / 是否接受迟到 10 分钟 / 要不要自带装备"
+            value={form.meetup_note}
+            onChange={(e) => update('meetup_note', e.target.value)}
+          />
+
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="安全提示"
+            value={form.safety_notice}
+            onChange={(e) => update('safety_notice', e.target.value)}
+          />
 
           <button className="btn-primary" type="submit" disabled={loading} style={{ marginTop: 8 }}>
             {loading ? '发布中...' : '发布活动'}

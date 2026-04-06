@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { AuthContext, useAuth } from './auth'
 
 import LoginPage from './pages/LoginPage'
 import ActivityList from './pages/ActivityList'
@@ -8,16 +9,12 @@ import CreateActivity from './pages/CreateActivity'
 import ProfilePage from './pages/ProfilePage'
 import ActivityDetail from './pages/ActivityDetail'
 import UserProfile from './pages/UserProfile'
-import MessageList from './pages/MessageList'
-import ChatPage from './pages/ChatPage'
-import FriendManage from './pages/FriendManage'
 import EditActivity from './pages/EditActivity'
 import Notifications from './pages/Notifications'
+import LegalPage from './pages/LegalPage'
 import TabBar from './components/TabBar'
+import InstallPrompt from './components/InstallPrompt'
 import { ToastProvider } from './components/Toast'
-
-export const AuthContext = createContext(null)
-export const useAuth = () => useContext(AuthContext)
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
@@ -25,7 +22,7 @@ function ProtectedRoute({ children }) {
 }
 
 // 需要显示 TabBar 的路由
-const TAB_ROUTES = ['/', '/notifications', '/create', '/messages', '/profile', '/profile/friends']
+const TAB_ROUTES = ['/', '/notifications', '/create', '/profile']
 
 function AppContent() {
   const [user, setUser] = useState(null)
@@ -71,18 +68,17 @@ function AppContent() {
     <AuthContext.Provider value={{ user }}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/legal/:type" element={<LegalPage />} />
         <Route path="/" element={<ProtectedRoute><ActivityList /></ProtectedRoute>} />
         <Route path="/create" element={<ProtectedRoute><CreateActivity /></ProtectedRoute>} />
         <Route path="/activity/:id" element={<ProtectedRoute><ActivityDetail /></ProtectedRoute>} />
         <Route path="/edit/:id" element={<ProtectedRoute><EditActivity /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-        <Route path="/profile/friends" element={<ProtectedRoute><FriendManage /></ProtectedRoute>} />
         <Route path="/user/:userId" element={<ProtectedRoute><UserProfile /></ProtectedRoute>} />
-        <Route path="/messages" element={<ProtectedRoute><MessageList /></ProtectedRoute>} />
-        <Route path="/messages/:userId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <InstallPrompt />
       {showTabBar && <TabBar />}
     </AuthContext.Provider>
   )

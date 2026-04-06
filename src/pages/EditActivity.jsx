@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
+import { useToast } from '../components/toast-context'
+
+const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
+const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先']
 
 export default function EditActivity() {
   const { id } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
-
+  const toast = useToast()
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -16,52 +20,55 @@ export default function EditActivity() {
     start_time: '',
     max_members: 2,
     category: '',
+    gender_requirement: '不限',
+    meetup_note: '',
+    safety_notice: '',
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const CATEGORIES = ['运动', '学习', '美食', '游戏', '户外', '娱乐', '社交', '其他']
-
   useEffect(() => {
-    fetchActivity()
-  }, [id])
+    async function loadActivity() {
+      const { data, error } = await supabase.from('activities').select('*').eq('id', id).single()
 
-  const fetchActivity = async () => {
-    const { data, error } = await supabase
-      .from('activities')
-      .select('*')
-      .eq('id', id)
-      .single()
+      if (error || !data) {
+        toast.error('活动不存在')
+        navigate('/')
+        return
+      }
 
-    if (error || !data) {
-      alert('活动不存在')
-      navigate('/')
-      return
+      if (data.creator_id !== user.id) {
+        toast.error('只有发起人可以编辑')
+        navigate(`/activity/${id}`)
+        return
+      }
+
+      const date = new Date(data.start_time)
+      const localISO = `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}T${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`
+
+      setForm({
+        title: data.title || '',
+        description: data.description || '',
+        location: data.location || '',
+        start_time: localISO,
+        max_members: data.max_members || 2,
+        category: data.category || '',
+        gender_requirement: data.gender_requirement || '不限',
+        meetup_note: data.meetup_note || '',
+        safety_notice: data.safety_notice || '',
+      })
+      setLoading(false)
     }
 
-    if (data.creator_id !== user.id) {
-      alert('只有创建者才能编辑')
-      navigate(`/activity/${id}`)
-      return
-    }
+    loadActivity()
+  }, [id, navigate, toast, user.id])
 
-    // 把 ISO 时间转成 datetime-local 需要的格式
-    const d = new Date(data.start_time)
-    const localISO = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}T${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
-
-    setForm({
-      title: data.title || '',
-      description: data.description || '',
-      location: data.location || '',
-      start_time: localISO,
-      max_members: data.max_members || 2,
-      category: data.category || '',
-    })
-    setLoading(false)
+  function update(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  async function handleSubmit(event) {
+    event.preventDefault()
     setSaving(true)
 
     const { error } = await supabase
@@ -73,24 +80,27 @@ export default function EditActivity() {
         start_time: new Date(form.start_time).toISOString(),
         max_members: form.max_members,
         category: form.category || '其他',
+        gender_requirement: form.gender_requirement || '不限',
+        meetup_note: form.meetup_note,
+        safety_notice: form.safety_notice,
       })
       .eq('id', id)
 
     setSaving(false)
 
     if (error) {
-      alert('保存失败：' + error.message)
-    } else {
-      navigate(`/activity/${id}`)
+      toast.error(error.message || '保存失败')
+      return
     }
-  }
 
-  const update = (field, value) => setForm({ ...form, [field]: value })
+    toast.success('活动已更新')
+    navigate(`/activity/${id}`)
+  }
 
   if (loading) {
     return (
       <div>
-        <Navbar title="编辑活动" />
+        <Navbar title="编辑活动" showBack />
         <div style={{ textAlign: 'center', padding: 60, color: '#999' }}>加载中...</div>
       </div>
     )
@@ -98,32 +108,31 @@ export default function EditActivity() {
 
   return (
     <div>
-      <Navbar title="编辑活动" />
+      <Navbar title="编辑活动" showBack />
 
       <div className="container" style={{ paddingTop: 16, paddingBottom: 80 }}>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <input
             className="input"
-            placeholder="活动标题（必填）"
+            placeholder="活动标题"
             value={form.title}
-            onChange={e => update('title', e.target.value)}
+            onChange={(e) => update('title', e.target.value)}
             required
           />
 
           <textarea
             className="input"
-            placeholder="活动描述（可选）"
+            placeholder="活动描述"
             rows={3}
             value={form.description}
-            onChange={e => update('description', e.target.value)}
-            style={{ resize: 'vertical' }}
+            onChange={(e) => update('description', e.target.value)}
           />
 
           <input
             className="input"
-            placeholder="活动地点（必填）"
+            placeholder="活动地点"
             value={form.location}
-            onChange={e => update('location', e.target.value)}
+            onChange={(e) => update('location', e.target.value)}
             required
           />
 
@@ -131,48 +140,88 @@ export default function EditActivity() {
             className="input"
             type="datetime-local"
             value={form.start_time}
-            onChange={e => update('start_time', e.target.value)}
+            onChange={(e) => update('start_time', e.target.value)}
             required
           />
 
           <div>
-            <label style={{ fontSize: 14, color: '#666', marginBottom: 6, display: 'block' }}>
-              最大人数
-            </label>
+            <label style={{ fontSize: 14, color: '#666', marginBottom: 6, display: 'block' }}>人数上限</label>
             <input
               className="input"
               type="number"
               min="2"
-              max="99"
+              max="6"
               value={form.max_members}
-              onChange={e => update('max_members', parseInt(e.target.value) || 2)}
+              onChange={(e) => update('max_members', parseInt(e.target.value, 10) || 2)}
               required
             />
           </div>
 
           <div>
-            <label style={{ fontSize: 14, color: '#666', marginBottom: 8, display: 'block' }}>
-              活动类型
-            </label>
+            <label style={{ fontSize: 14, color: '#666', marginBottom: 8, display: 'block' }}>活动场景</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {CATEGORIES.map(c => (
+              {CATEGORIES.map((item) => (
                 <button
-                  key={c}
+                  key={item}
                   type="button"
+                  onClick={() => update('category', item)}
                   style={{
-                    padding: '8px 16px', borderRadius: 20, fontSize: 14,
-                    border: form.category === c ? '1.5px solid #1a1a1a' : '1.5px solid #e8e8e8',
-                    background: form.category === c ? '#1a1a1a' : '#fff',
-                    color: form.category === c ? '#fff' : '#666',
-                    cursor: 'pointer', transition: 'all 0.15s',
+                    padding: '8px 16px',
+                    borderRadius: 20,
+                    fontSize: 14,
+                    border: form.category === item ? 'none' : '1.5px solid #e8e8e8',
+                    background: form.category === item ? 'var(--primary)' : '#fff',
+                    color: form.category === item ? '#fff' : '#666',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
                   }}
-                  onClick={() => update('category', c)}
                 >
-                  {c}
+                  {item}
                 </button>
               ))}
             </div>
           </div>
+
+          <div>
+            <label style={{ fontSize: 14, color: '#666', marginBottom: 8, display: 'block' }}>性别要求</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {GENDER_OPTIONS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => update('gender_requirement', item)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: 20,
+                    fontSize: 14,
+                    border: form.gender_requirement === item ? 'none' : '1.5px solid #e8e8e8',
+                    background: form.gender_requirement === item ? 'var(--accent)' : '#fff',
+                    color: form.gender_requirement === item ? '#fff' : '#666',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="集合方式 / AA / 注意事项"
+            value={form.meetup_note}
+            onChange={(e) => update('meetup_note', e.target.value)}
+          />
+
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="安全提示"
+            value={form.safety_notice}
+            onChange={(e) => update('safety_notice', e.target.value)}
+          />
 
           <button className="btn-primary" type="submit" disabled={saving} style={{ marginTop: 8 }}>
             {saving ? '保存中...' : '保存修改'}

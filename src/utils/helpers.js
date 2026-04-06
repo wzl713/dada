@@ -44,11 +44,12 @@ import { supabase } from '../supabaseClient'
 export async function getUserInfo(userId) {
   const { data } = await supabase
     .from('profiles')
-    .select('nickname, avatar_url')
+    .select('nickname, avatar_url, school_name')
     .eq('id', userId)
     .single()
   return {
     nickname: data?.nickname || ('用户' + userId.slice(0, 6)),
     avatar_url: data?.avatar_url || '',
+    school_name: data?.school_name || '',
   }
 }

@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
 import Avatar from '../components/Avatar'
 import { SkeletonProfile } from '../components/Skeleton'
 import { formatShortTime } from '../utils/helpers'
-import { useToast } from '../components/Toast'
+import { useToast } from '../components/toast-context'
+import { getReviewSummary } from '../utils/trust'
+import { getBlockRelationship } from '../utils/safety'
 
 export default function UserProfile() {
   const { userId } = useParams()
@@ -16,70 +18,144 @@ export default function UserProfile() {
 
   const [profile, setProfile] = useState(null)
   const [activities, setActivities] = useState([])
-  const [friendStatus, setFriendStatus] = useState(null)
+  const [reviewSummary, setReviewSummary] = useState({
+    averageRating: 0,
+    reviewCount: 0,
+    topTags: [],
+    positiveRate: 0,
+  })
+  const [blockState, setBlockState] = useState({ blockedByMe: false, blockedMe: false })
   const [loading, setLoading] = useState(true)
 
   const isSelf = user?.id === userId
 
   useEffect(() => {
-    if (isSelf) { navigate('/profile'); return }
-    fetchUserData()
-  }, [userId])
+    if (isSelf) {
+      navigate('/profile')
+      return
+    }
 
-  const fetchUserData = async () => {
-    setLoading(true)
-    const { data: prof } = await supabase.from('profiles').select('id, nickname, avatar_url, created_at, points, reputation').eq('id', userId).single()
-    let nickname = prof?.nickname || ('用户' + userId.slice(0, 6))
-    setProfile({
-      id: userId, nickname,
-      avatar_url: prof?.avatar_url || '',
-      points: prof?.points || 0,
-      reputation: prof?.reputation || 100,
+    let active = true
+
+    async function loadUserData() {
+      setLoading(true)
+      const [{ data: prof }, summary, relation] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, nickname, avatar_url, school_name, bio')
+          .eq('id', userId)
+          .single(),
+        getReviewSummary(userId),
+        getBlockRelationship(user.id, userId),
+      ])
+
+      if (!active) return
+
+      setBlockState(relation)
+      setReviewSummary(summary)
+      setProfile({
+        id: userId,
+        nickname: prof?.nickname || `用户${userId.slice(0, 6)}`,
+        avatar_url: prof?.avatar_url || '',
+        school_name: prof?.school_name || '',
+        bio: prof?.bio || '',
+      })
+
+      if (!relation.blockedByMe && !relation.blockedMe) {
+        const { data: acts } = await supabase
+          .from('activities')
+          .select('id, title, start_time, location, cover_url, gender_requirement')
+          .eq('creator_id', userId)
+          .order('created_at', { ascending: false })
+
+        if (!active) return
+        setActivities(acts || [])
+      }
+
+      setLoading(false)
+    }
+
+    loadUserData()
+    return () => {
+      active = false
+    }
+  }, [isSelf, navigate, user.id, userId])
+
+  async function handleBlock() {
+    if (!window.confirm(`拉黑 ${profile.nickname} 后，你将不再看到 TA 的活动。继续吗？`)) return
+    const reason = window.prompt('可选：填写拉黑原因', '') || ''
+    const { error } = await supabase.from('blocked_users').insert({
+      blocker_id: user.id,
+      blocked_user_id: userId,
+      reason,
     })
 
-    const { data: acts } = await supabase.from('activities').select('id, title, start_time, location, max_members, created_at, cover_url').eq('creator_id', userId).order('created_at', { ascending: false })
-    setActivities(acts || [])
-    checkFriendship()
-    setLoading(false)
-  }
-
-  const checkFriendship = async () => {
-    const { data } = await supabase.from('friendships').select('id, status, from_user_id, to_user_id').eq('from_user_id', user.id).eq('to_user_id', userId).neq('status', 'rejected').single()
-    const { data: reverse } = !data ? await supabase.from('friendships').select('id, status, from_user_id, to_user_id').eq('from_user_id', userId).eq('to_user_id', user.id).neq('status', 'rejected').single() : {}
-    const rel = data || reverse
-    if (rel) {
-      setFriendStatus(rel.status === 'pending' && rel.from_user_id === userId ? 'received' : rel.status)
-    } else {
-      setFriendStatus('none')
+    if (error) {
+      toast.error(error.message || '拉黑失败')
+      return
     }
+
+    setBlockState({ blockedByMe: true, blockedMe: false })
+    setActivities([])
+    toast.success('已拉黑该用户')
   }
 
-  const handleAddFriend = async () => {
-    const { error } = await supabase.from('friendships').insert({ from_user_id: user.id, to_user_id: userId, status: 'pending' })
-    if (error) toast.error(error.code === '23505' ? '已申请过' : '操作失败')
-    else setFriendStatus('pending')
+  async function handleUnblock() {
+    const { error } = await supabase
+      .from('blocked_users')
+      .delete()
+      .match({ blocker_id: user.id, blocked_user_id: userId })
+
+    if (error) {
+      toast.error('取消拉黑失败')
+      return
+    }
+
+    setBlockState({ blockedByMe: false, blockedMe: false })
+    toast.success('已取消拉黑')
   }
 
-  const handleAcceptFriend = async () => {
-    const { error } = await supabase.from('friendships').update({ status: 'accepted', updated_at: new Date().toISOString() }).eq('from_user_id', userId).eq('to_user_id', user.id).eq('status', 'pending')
-    if (!error) setFriendStatus('accepted')
+  async function handleReport() {
+    const reason = window.prompt('请填写举报该用户的原因')
+    if (!reason?.trim()) return
+
+    const { error } = await supabase.from('user_reports').insert({
+      reporter_id: user.id,
+      reported_user_id: userId,
+      reason: reason.trim(),
+      report_type: 'user',
+    })
+
+    if (error) {
+      toast.error(error.message || '举报失败')
+      return
+    }
+
+    toast.success('举报已提交')
   }
 
-  const handleRejectFriend = async () => {
-    const { error } = await supabase.from('friendships').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('from_user_id', userId).eq('to_user_id', user.id).eq('status', 'pending')
-    if (!error) setFriendStatus('none')
+  if (loading) {
+    return (
+      <div>
+        <Navbar title="用户主页" showBack />
+        <SkeletonProfile />
+      </div>
+    )
   }
 
-  if (loading) return <div><Navbar title="用户主页" showBack /><SkeletonProfile /></div>
-  if (!profile) return <div><Navbar title="用户主页" showBack /><div className="empty-state"><div className="empty-state-icon">🤷</div><div className="empty-state-title">用户不存在</div></div></div>
-
-  const getReputationLabel = (rep) => {
-    if (rep >= 200) return { text: '信誉极佳', color: '#22c55e', bg: '#f0fdf4' }
-    if (rep >= 150) return { text: '信誉良好', color: '#667eea', bg: '#f0edff' }
-    if (rep >= 100) return { text: '信誉一般', color: '#f59e0b', bg: '#fffbeb' }
-    return { text: '信誉较低', color: '#ef4444', bg: '#fef2f2' }
+  if (!profile) {
+    return (
+      <div>
+        <Navbar title="用户主页" showBack />
+        <div className="empty-state">
+          <div className="empty-state-icon">🤷</div>
+          <div className="empty-state-title">用户不存在</div>
+        </div>
+      </div>
+    )
   }
-  const repInfo = getReputationLabel(profile.reputation)
+
+  const limited = blockState.blockedByMe || blockState.blockedMe
 
   return (
     <div>
@@ -88,70 +164,68 @@ export default function UserProfile() {
       <div className="container" style={{ paddingTop: 12, paddingBottom: 90 }}>
         <div className="card" style={{ textAlign: 'center', padding: 28 }}>
           <Avatar src={profile.avatar_url} nickname={profile.nickname} size={72} />
-          <div style={{ margin: '12px auto 4px' }}>
-            <Avatar src={profile.avatar_url} nickname={profile.nickname} size={72} />
-          </div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>{profile.nickname}</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800, margin: '12px 0 8px' }}>{profile.nickname}</h2>
+          {profile.bio && <p style={{ fontSize: 13, color: '#666', lineHeight: 1.6, marginBottom: 10 }}>{profile.bio}</p>}
 
-          {/* 积分和信誉 */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 16 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--accent)' }}>{profile.points}</div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>积分</div>
-            </div>
-            <div style={{ width: 1, background: 'var(--border-light)' }} />
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-                <span style={{ fontSize: 20, fontWeight: 800, color: repInfo.color }}>{profile.reputation}</span>
-                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: repInfo.bg, color: repInfo.color, fontWeight: 600 }}>{repInfo.text}</span>
-              </div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>信誉分</div>
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            {profile.school_name && <span className="tag">🎓 {profile.school_name}</span>}
+            {reviewSummary.reviewCount > 0 && <span className="tag tag-accent">⭐ {reviewSummary.averageRating} 分</span>}
+            {reviewSummary.reviewCount > 0 && <span className="tag tag-success">{reviewSummary.positiveRate}% 好评率</span>}
           </div>
 
-          {/* 好友按钮 */}
-          {friendStatus === 'accepted' ? (
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button className="btn-accent" onClick={() => navigate(`/messages/${userId}`)}>💬 私信</button>
+          {!limited && reviewSummary.topTags.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              {reviewSummary.topTags.map((tag) => (
+                <span key={tag} className="tag">{tag}</span>
+              ))}
             </div>
-          ) : friendStatus === 'pending' ? (
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', alignItems: 'center' }}>
-              <button className="btn-accent" onClick={() => navigate(`/messages/${userId}`)}>💬 私信</button>
-              <span style={{ fontSize: 13, color: '#bbb' }}>已申请好友</span>
+          )}
+
+          {blockState.blockedMe && (
+            <div style={{ background: '#fff7ed', color: '#c2410c', padding: '10px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.6 }}>
+              对方已将你拉黑，你只能查看基础资料。
             </div>
-          ) : friendStatus === 'received' ? (
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <button className="btn-accent" onClick={handleAcceptFriend}>✓ 同意</button>
-              <button className="btn-ghost" onClick={handleRejectFriend}>拒绝</button>
-              <button className="btn-ghost" onClick={() => navigate(`/messages/${userId}`)}>💬</button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button className="btn-accent" onClick={handleAddFriend}>+ 加好友</button>
-              <button className="btn-ghost" onClick={() => navigate(`/messages/${userId}`)}>💬 私信</button>
+          )}
+
+          {!blockState.blockedMe && (
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              {blockState.blockedByMe ? (
+                <button className="btn-ghost" onClick={handleUnblock}>取消拉黑</button>
+              ) : (
+                <button className="btn-ghost" onClick={handleBlock}>拉黑</button>
+              )}
+              <button className="btn-ghost" onClick={handleReport}>举报</button>
             </div>
           )}
         </div>
 
         <div style={{ fontSize: 11, color: '#bbb', marginBottom: 8, paddingLeft: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          TA 发布的活动
+          TA 发起的活动
         </div>
-        {activities.length === 0 ? (
+
+        {limited ? (
+          <div className="card" style={{ color: '#999', fontSize: 13, lineHeight: 1.6 }}>
+            存在拉黑关系时，不再展示对方的活动内容。
+          </div>
+        ) : activities.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', color: '#bbb', padding: 24, fontSize: 14 }}>还没有发布活动</div>
         ) : (
-          activities.map(a => {
-            const expired = new Date(a.start_time) < new Date()
+          activities.map((activity) => {
+            const expired = new Date(activity.start_time) < new Date()
             return (
-              <div key={a.id} className="card" style={{ cursor: 'pointer', opacity: expired ? 0.55 : 1, padding: 0, overflow: 'hidden' }} onClick={() => navigate(`/activity/${a.id}`)}>
-                {a.cover_url && (
-                  <div style={{ width: '100%', height: 100, background: `url(${a.cover_url}) center/cover no-repeat` }} />
+              <div key={activity.id} className="card" style={{ cursor: 'pointer', opacity: expired ? 0.55 : 1, padding: 0, overflow: 'hidden' }} onClick={() => navigate(`/activity/${activity.id}`)}>
+                {activity.cover_url && (
+                  <div style={{ width: '100%', height: 100, background: `url(${activity.cover_url}) center/cover no-repeat` }} />
                 )}
                 <div style={{ padding: '12px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                    <span style={{ fontWeight: 600, fontSize: 15 }}>{a.title}</span>
+                    <span style={{ fontWeight: 600, fontSize: 15 }}>{activity.title}</span>
                     {expired && <span className="tag tag-danger" style={{ fontSize: 11, flexShrink: 0, marginLeft: 8 }}>已结束</span>}
                   </div>
-                  <div style={{ fontSize: 12, color: '#bbb' }}>🕐 {formatShortTime(a.start_time)} · 📍 {a.location}</div>
+                  <div style={{ fontSize: 12, color: '#bbb' }}>
+                    🕐 {formatShortTime(activity.start_time)} · 📍 {activity.location}
+                    {activity.gender_requirement && activity.gender_requirement !== '不限' ? ` · ${activity.gender_requirement}` : ''}
+                  </div>
                 </div>
               </div>
             )

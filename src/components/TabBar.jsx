@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 
@@ -28,7 +28,6 @@ export default function TabBar() {
     { path: '/', icon: '🏠', label: '首页' },
     { path: '/notifications', icon: '🔔', label: '通知', badge: unreadNotifications },
     { path: '/create', icon: '➕', label: '发布', isCenter: true },
-    { path: '/messages', icon: '💬', label: '消息' },
     { path: '/profile', icon: '👤', label: '我的' },
   ]
 

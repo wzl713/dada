@@ -1,20 +1,21 @@
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
 import ActivityCard from '../components/ActivityCard'
 import { SkeletonList } from '../components/Skeleton'
+import { useToast } from '../components/toast-context'
+import { getBlockedUserIds } from '../utils/safety'
 
 const CATEGORIES = [
-  { value: '', label: '全部类型' },
-  { value: '运动', label: '🏃 运动' },
-  { value: '学习', label: '📚 学习' },
-  { value: '美食', label: '🍜 美食' },
-  { value: '游戏', label: '🎮 游戏' },
-  { value: '户外', label: '🏔️ 户外' },
-  { value: '娱乐', label: '🎵 娱乐' },
-  { value: '社交', label: '🤝 社交' },
-  { value: '其他', label: '📌 其他' },
+  { value: '', label: '全部场景' },
+  { value: '电影', label: '🎬 电影' },
+  { value: '吃饭', label: '🍜 吃饭' },
+  { value: '运动', label: '🏸 运动' },
+  { value: '自习', label: '📚 自习' },
+  { value: '徒步', label: '🥾 徒步' },
+  { value: '展览', label: '🖼️ 展览' },
+  { value: '其他', label: '🧩 其他' },
 ]
 
 const TIME_FILTERS = [
@@ -22,11 +23,11 @@ const TIME_FILTERS = [
   { value: 'today', label: '今天' },
   { value: 'tomorrow', label: '明天' },
   { value: 'week', label: '本周' },
-  { value: 'month', label: '本月' },
 ]
 
 export default function ActivityList() {
   const { user } = useAuth()
+  const toast = useToast()
   const [activities, setActivities] = useState([])
   const [myJoined, setMyJoined] = useState([])
   const [loading, setLoading] = useState(true)
@@ -37,82 +38,106 @@ export default function ActivityList() {
   const [location, setLocation] = useState('')
   const debounceTimer = useRef(null)
 
-  const fetchActivities = async (filters = {}) => {
-    setLoading(true)
+  const fetchActivities = useCallback(async (filters = {}, options = {}) => {
+    const { silent = false } = options
+    if (!silent) setLoading(true)
+
     let query = supabase.from('activities_with_count').select('*')
 
     if (filters.keyword) {
       const kw = filters.keyword.trim()
       query = query.or(`title.ilike.%${kw}%,description.ilike.%${kw}%,location.ilike.%${kw}%`)
     }
+
     if (filters.category) query = query.eq('category', filters.category)
     if (filters.location) query = query.ilike('location', `%${filters.location}%`)
 
     if (filters.timeFilter) {
       const now = new Date()
-      const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      switch (filters.timeFilter) {
-        case 'today': {
-          const eod = new Date(sod.getTime() + 86400000)
-          query = query.gte('start_time', sod.toISOString()).lt('start_time', eod.toISOString())
-          break
-        }
-        case 'tomorrow': {
-          const t = new Date(sod.getTime() + 86400000)
-          const et = new Date(t.getTime() + 86400000)
-          query = query.gte('start_time', t.toISOString()).lt('start_time', et.toISOString())
-          break
-        }
-        case 'week': {
-          const eow = new Date(sod.getTime() + 7 * 86400000)
-          query = query.gte('start_time', sod.toISOString()).lt('start_time', eow.toISOString())
-          break
-        }
-        case 'month': {
-          const eom = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-          query = query.gte('start_time', sod.toISOString()).lt('start_time', eom.toISOString())
-          break
-        }
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+
+      if (filters.timeFilter === 'today') {
+        const endOfDay = new Date(startOfDay.getTime() + 86400000)
+        query = query.gte('start_time', startOfDay.toISOString()).lt('start_time', endOfDay.toISOString())
+      }
+
+      if (filters.timeFilter === 'tomorrow') {
+        const tomorrow = new Date(startOfDay.getTime() + 86400000)
+        const end = new Date(tomorrow.getTime() + 86400000)
+        query = query.gte('start_time', tomorrow.toISOString()).lt('start_time', end.toISOString())
+      }
+
+      if (filters.timeFilter === 'week') {
+        const endOfWeek = new Date(startOfDay.getTime() + 7 * 86400000)
+        query = query.gte('start_time', startOfDay.toISOString()).lt('start_time', endOfWeek.toISOString())
       }
     }
 
-    const { data } = await query.order('start_time', { ascending: true })
+    const [{ data }, blockedIds, joinedRows] = await Promise.all([
+      query.order('start_time', { ascending: true }),
+      getBlockedUserIds(user.id),
+      supabase.from('activity_members').select('activity_id').eq('user_id', user.id),
+    ])
+
+    const blockedSet = new Set(blockedIds)
+    const filtered = (data || []).filter((item) => !blockedSet.has(item.creator_id))
 
     const now = new Date()
-    const sorted = (data || []).sort((a, b) => {
-      const aExp = new Date(a.start_time) < now
-      const bExp = new Date(b.start_time) < now
-      if (aExp !== bExp) return aExp ? 1 : -1
-      if (!aExp && !bExp) return new Date(a.start_time) - new Date(b.start_time)
+    const sorted = filtered.sort((a, b) => {
+      const aExpired = new Date(a.start_time) < now
+      const bExpired = new Date(b.start_time) < now
+
+      if (aExpired !== bExpired) return aExpired ? 1 : -1
+      if (!aExpired && !bExpired) return new Date(a.start_time) - new Date(b.start_time)
       return new Date(b.start_time) - new Date(a.start_time)
     })
 
     setActivities(sorted)
-    if (user) {
-      const { data: joined } = await supabase.from('activity_members').select('activity_id').eq('user_id', user.id)
-      setMyJoined((joined || []).map(j => j.activity_id))
-    }
+    setMyJoined((joinedRows.data || []).map((item) => item.activity_id))
     setLoading(false)
-  }
+  }, [user.id])
 
-  useEffect(() => { fetchActivities() }, [])
+  useEffect(() => {
+    let active = true
 
-  const handleSearch = (value) => {
+    async function loadInitial() {
+      await fetchActivities()
+      if (!active) return
+    }
+
+    loadInitial()
+
+    return () => {
+      active = false
+      if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    }
+  }, [fetchActivities])
+
+  function handleSearch(value) {
     setKeyword(value)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(() => {
-      fetchActivities({ keyword: value, category, timeFilter, location })
-    }, 300)
+      fetchActivities({ keyword: value, category, timeFilter, location }, { silent: true })
+    }, 250)
   }
 
-  const handleFilterChange = (field, value) => {
+  function handleFilterChange(field, value) {
+    const next = {
+      keyword,
+      category,
+      timeFilter,
+      location,
+      [field]: value,
+    }
+
     if (field === 'category') setCategory(value)
     if (field === 'timeFilter') setTimeFilter(value)
     if (field === 'location') setLocation(value)
-    fetchActivities({ keyword, category: field === 'category' ? value : category, timeFilter: field === 'timeFilter' ? value : timeFilter, location: field === 'location' ? value : location })
+
+    fetchActivities(next, { silent: true })
   }
 
-  const clearFilters = () => {
+  function clearFilters() {
     setKeyword('')
     setCategory('')
     setTimeFilter('')
@@ -121,167 +146,229 @@ export default function ActivityList() {
     fetchActivities({})
   }
 
-  const hasFilters = keyword || category || timeFilter || location
+  async function handleJoin(activityId) {
+    const { error } = await supabase
+      .from('activity_members')
+      .insert({ activity_id: activityId, user_id: user.id })
 
-  const handleJoin = async (activityId) => {
-    const { error } = await supabase.from('activity_members').insert({ activity_id: activityId, user_id: user.id })
-    if (!error) {
-      setMyJoined(prev => [...prev, activityId])
-      fetchActivities({ keyword, category, timeFilter, location })
+    if (error) {
+      toast.error(error.message || '加入失败')
+      return
     }
+
+    toast.success('已加入，活动内讨论已解锁')
+    setMyJoined((prev) => [...prev, activityId])
+    fetchActivities({ keyword, category, timeFilter, location }, { silent: true })
   }
 
-  const handleLeave = async (activityId) => {
-    const { error } = await supabase.from('activity_members').delete().match({ activity_id: activityId, user_id: user.id })
-    if (!error) {
-      setMyJoined(prev => prev.filter(id => id !== activityId))
-      fetchActivities({ keyword, category, timeFilter, location })
+  async function handleLeave(activityId) {
+    const { error } = await supabase
+      .from('activity_members')
+      .delete()
+      .match({ activity_id: activityId, user_id: user.id })
+
+    if (error) {
+      toast.error('取消失败')
+      return
     }
+
+    setMyJoined((prev) => prev.filter((id) => id !== activityId))
+    fetchActivities({ keyword, category, timeFilter, location }, { silent: true })
   }
 
-  const handleDelete = async (activityId) => {
-    if (!confirm('确定要删除这个活动吗？所有参与记录也会一并删除。')) return
+  async function handleDelete(activityId) {
+    if (!window.confirm('确定要删除这个活动吗？所有报名与讨论记录也会一起删除。')) return
+
     const { error } = await supabase.from('activities').delete().eq('id', activityId)
-    if (!error) fetchActivities({ keyword, category, timeFilter, location })
+    if (error) {
+      toast.error('删除失败')
+      return
+    }
+
+    toast.success('活动已删除')
+    fetchActivities({ keyword, category, timeFilter, location })
   }
+
+  const hasFilters = keyword || category || timeFilter || location
 
   return (
     <div>
       <Navbar title="搭搭" />
 
       <div className="container" style={{ paddingTop: 12, paddingBottom: 90 }}>
-        {/* 搜索栏 */}
+        <div
+          className="card"
+          style={{
+            background: 'linear-gradient(135deg, #121826 0%, #243b53 100%)',
+            color: '#fff',
+            marginBottom: 14,
+          }}
+        >
+          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}>即时拼局工具</div>
+          <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.25, marginBottom: 8 }}>
+            5分钟内，找到一起出去的人
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.6, color: 'rgba(255,255,255,0.78)' }}>
+            不聊很久，直接看附近谁正在组电影、吃饭、运动和周末局。
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <div style={{ flex: 1, position: 'relative' }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 15, color: '#ccc' }}>🔍</span>
+            <span
+              style={{
+                position: 'absolute',
+                left: 12,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                fontSize: 15,
+                color: '#ccc',
+              }}
+            >
+              🔍
+            </span>
             <input
               className="input"
-              placeholder="搜索活动、地点..."
+              placeholder="搜索电影、吃饭、羽毛球..."
               value={keyword}
-              onChange={e => handleSearch(e.target.value)}
+              onChange={(e) => handleSearch(e.target.value)}
               style={{ paddingLeft: 36, background: '#f5f5f5', border: 'none' }}
             />
           </div>
           <button
+            type="button"
+            onClick={() => setShowFilter((prev) => !prev)}
             style={{
-              padding: '10px 14px', background: showFilter ? 'var(--accent)' : '#f5f5f5',
-              color: showFilter ? '#fff' : '#888', border: 'none', borderRadius: 12,
-              fontSize: 13, cursor: 'pointer', fontWeight: 600, flexShrink: 0,
-              transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 4,
+              padding: '10px 14px',
+              background: showFilter ? 'var(--accent)' : '#f5f5f5',
+              color: showFilter ? '#fff' : '#888',
+              border: 'none',
+              borderRadius: 12,
+              fontSize: 13,
+              cursor: 'pointer',
+              fontWeight: 600,
+              flexShrink: 0,
             }}
-            onClick={() => setShowFilter(!showFilter)}
           >
-            ⚙️ {hasFilters ? '●' : ''}
+            筛选{hasFilters ? ' •' : ''}
           </button>
         </div>
 
-        {/* 筛选面板 */}
         {showFilter && (
           <div className="card" style={{ marginBottom: 12 }}>
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>活动类型</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', marginBottom: 8 }}>
+                场景
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {CATEGORIES.map(c => (
+                {CATEGORIES.map((item) => (
                   <button
-                    key={c.value}
+                    key={item.value}
+                    type="button"
+                    onClick={() => handleFilterChange('category', item.value)}
                     style={{
-                      padding: '6px 14px', borderRadius: 20, fontSize: 13,
-                      border: category === c.value ? 'none' : '1.5px solid #e8e8e8',
-                      background: category === c.value ? 'var(--accent)' : '#fff',
-                      color: category === c.value ? '#fff' : '#666',
-                      cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit',
+                      padding: '6px 14px',
+                      borderRadius: 20,
+                      fontSize: 13,
+                      border: category === item.value ? 'none' : '1.5px solid #e8e8e8',
+                      background: category === item.value ? 'var(--accent)' : '#fff',
+                      color: category === item.value ? '#fff' : '#666',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
                     }}
-                    onClick={() => handleFilterChange('category', c.value)}
                   >
-                    {c.label}
+                    {item.label}
                   </button>
                 ))}
               </div>
             </div>
 
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>时间范围</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', marginBottom: 8 }}>
+                时间
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {TIME_FILTERS.map(t => (
+                {TIME_FILTERS.map((item) => (
                   <button
-                    key={t.value}
+                    key={item.value}
+                    type="button"
+                    onClick={() => handleFilterChange('timeFilter', item.value)}
                     style={{
-                      padding: '6px 14px', borderRadius: 20, fontSize: 13,
-                      border: timeFilter === t.value ? 'none' : '1.5px solid #e8e8e8',
-                      background: timeFilter === t.value ? 'var(--accent)' : '#fff',
-                      color: timeFilter === t.value ? '#fff' : '#666',
-                      cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit',
+                      padding: '6px 14px',
+                      borderRadius: 20,
+                      fontSize: 13,
+                      border: timeFilter === item.value ? 'none' : '1.5px solid #e8e8e8',
+                      background: timeFilter === item.value ? 'var(--accent)' : '#fff',
+                      color: timeFilter === item.value ? '#fff' : '#666',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
                     }}
-                    onClick={() => handleFilterChange('timeFilter', t.value)}
                   >
-                    {t.label}
+                    {item.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>地点</div>
+            <div style={{ marginBottom: hasFilters ? 10 : 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#999', marginBottom: 8 }}>
+                地点关键词
+              </div>
               <input
                 className="input"
-                placeholder="输入地点关键词..."
+                placeholder="例如：曲江、大悦城、操场"
                 value={location}
-                onChange={e => handleFilterChange('location', e.target.value)}
+                onChange={(e) => handleFilterChange('location', e.target.value)}
               />
             </div>
 
             {hasFilters && (
               <button
-                style={{
-                  background: 'none', border: 'none', color: 'var(--accent)',
-                  fontSize: 13, cursor: 'pointer', fontWeight: 600, padding: 0, fontFamily: 'inherit',
-                }}
+                type="button"
                 onClick={clearFilters}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent)',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  padding: 0,
+                  fontFamily: 'inherit',
+                }}
               >
-                ✕ 清除所有筛选
+                清除所有筛选
               </button>
             )}
           </div>
         )}
 
-        {/* 列表内容 */}
         {loading ? (
           <SkeletonList count={4} />
         ) : activities.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">🏕️</div>
+            <div className="empty-state-icon">🧭</div>
             <div className="empty-state-title">
-              {hasFilters ? '没有找到匹配的活动' : '还没有活动'}
+              {hasFilters ? '暂时没有匹配的搭子局' : '附近还没有新的搭子局'}
             </div>
             <div className="empty-state-desc">
-              {hasFilters ? '试试调整筛选条件' : '发布一个活动，邀请大家一起参加吧！'}
+              {hasFilters ? '换个场景或时间再试试。' : '你可以先发一个具体活动，别人会更容易报名。'}
             </div>
-            {hasFilters && (
-              <button
-                className="btn-ghost"
-                style={{ marginTop: 16 }}
-                onClick={clearFilters}
-              >
-                清除筛选
-              </button>
-            )}
           </div>
         ) : (
           <>
-            {hasFilters && (
-              <div style={{ fontSize: 12, color: '#bbb', marginBottom: 8, paddingLeft: 4 }}>
-                找到 {activities.length} 个活动
-              </div>
-            )}
-            {activities.map(a => (
+            <div style={{ fontSize: 12, color: '#999', marginBottom: 8, paddingLeft: 4 }}>
+              {hasFilters ? `找到 ${activities.length} 个活动` : '按时间优先展示即将开始的活动'}
+            </div>
+            {activities.map((activity) => (
               <ActivityCard
-                key={a.id}
-                activity={a}
+                key={activity.id}
+                activity={activity}
                 onJoin={handleJoin}
                 onLeave={handleLeave}
                 onDelete={handleDelete}
-                isJoined={myJoined.includes(a.id)}
-                isFull={a.member_count >= a.max_members}
+                isJoined={myJoined.includes(activity.id)}
+                isFull={activity.member_count >= activity.max_members}
               />
             ))}
           </>

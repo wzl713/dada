@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import { formatTime } from '../utils/helpers'
 
 export default function ActivityCard({ activity, onJoin, onLeave, onDelete, isJoined, isFull }) {
@@ -70,6 +70,12 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, isJo
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12, fontSize: 13, color: '#888' }}>
           <span>🕐 {formatTime(activity.start_time)}</span>
           <span>📍 {activity.location}</span>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+          {activity.gender_requirement && activity.gender_requirement !== '不限' && (
+            <span className="tag tag-accent">🙋 {activity.gender_requirement}</span>
+          )}
         </div>
 
         {/* 底部：人数 + 按钮 */}

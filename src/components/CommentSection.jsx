@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import Avatar from './Avatar'
 import { timeAgo, getUserInfo } from '../utils/helpers'
 
-export default function CommentSection({ activityId }) {
+export default function CommentSection({ activityId, canParticipate }) {
   const { user } = useAuth()
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(true)
@@ -12,77 +12,117 @@ export default function CommentSection({ activityId }) {
   const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef(null)
 
-  useEffect(() => { fetchComments() }, [activityId])
+  useEffect(() => {
+    let active = true
 
-  const fetchComments = async () => {
-    const { data } = await supabase
-      .from('comments')
-      .select('id, user_id, content, created_at')
-      .eq('activity_id', activityId)
-      .order('created_at', { ascending: true })
+    async function loadComments() {
+      setLoading(true)
+      const { data } = await supabase
+        .from('comments')
+        .select('id, user_id, content, created_at')
+        .eq('activity_id', activityId)
+        .order('created_at', { ascending: true })
 
-    if (data) {
+      if (!active) return
+
       const withProfiles = await Promise.all(
-        data.map(async c => {
-          const info = await getUserInfo(c.user_id)
-          return { ...c, nickname: info.nickname, avatar_url: info.avatar_url }
+        (data || []).map(async (item) => {
+          const info = await getUserInfo(item.user_id)
+          return { ...item, nickname: info.nickname, avatar_url: info.avatar_url }
         })
       )
+
+      if (!active) return
       setComments(withProfiles)
+      setLoading(false)
     }
-    setLoading(false)
-  }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!content.trim() || submitting) return
+    loadComments()
+    return () => {
+      active = false
+    }
+  }, [activityId])
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    if (!content.trim() || submitting || !canParticipate) return
+
     setSubmitting(true)
-
+    const nextContent = content.trim()
     const { error } = await supabase.from('comments').insert({
       activity_id: activityId,
       user_id: user.id,
-      content: content.trim(),
+      content: nextContent,
     })
 
     if (!error) {
+      const info = await getUserInfo(user.id)
+      setComments((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          user_id: user.id,
+          content: nextContent,
+          created_at: new Date().toISOString(),
+          nickname: info.nickname,
+          avatar_url: info.avatar_url,
+        },
+      ])
       setContent('')
-      fetchComments()
+      inputRef.current?.focus()
     }
+
     setSubmitting(false)
   }
 
-  const handleDelete = async (commentId) => {
+  async function handleDelete(commentId) {
     const { error } = await supabase.from('comments').delete().eq('id', commentId)
-    if (!error) setComments(prev => prev.filter(c => c.id !== commentId))
+    if (!error) {
+      setComments((prev) => prev.filter((item) => item.id !== commentId))
+    }
   }
 
   return (
     <div className="card">
       <div style={{ fontSize: 11, color: '#bbb', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-        讨论 ({comments.length})
+        活动内讨论 ({comments.length})
       </div>
 
-      {/* 评论输入框 */}
+      {!canParticipate && (
+        <div style={{ background: '#f8f7ff', borderRadius: 12, padding: 14, marginBottom: 16, fontSize: 13, color: '#666', lineHeight: 1.6 }}>
+          加入活动后才能进入讨论区，避免聊很久却不见面。
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <Avatar src={user?.id ? '' : undefined} nickname="" size={32} />
+        <Avatar src={undefined} nickname="" size={32} />
         <div style={{ flex: 1, position: 'relative' }}>
           <input
             ref={inputRef}
             className="input"
-            placeholder="说点什么..."
+            placeholder={canParticipate ? '说下到达时间、集合点或注意事项...' : '加入后才能发言'}
             value={content}
-            onChange={e => setContent(e.target.value)}
+            onChange={(e) => setContent(e.target.value)}
+            disabled={!canParticipate}
             style={{ paddingRight: 60, fontSize: 14, padding: '10px 60px 10px 14px' }}
           />
           <button
             type="submit"
-            disabled={!content.trim() || submitting}
+            disabled={!content.trim() || submitting || !canParticipate}
             style={{
-              position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-              background: content.trim() ? 'var(--accent)' : '#ddd',
-              color: '#fff', border: 'none', borderRadius: 16,
-              padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              fontFamily: 'inherit', transition: 'all 0.15s',
+              position: 'absolute',
+              right: 6,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              background: content.trim() && canParticipate ? 'var(--accent)' : '#ddd',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 16,
+              padding: '5px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
             }}
           >
             发送
@@ -90,24 +130,24 @@ export default function CommentSection({ activityId }) {
         </div>
       </form>
 
-      {/* 评论列表 */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 20, color: '#bbb', fontSize: 13 }}>加载评论...</div>
+        <div style={{ textAlign: 'center', padding: 20, color: '#bbb', fontSize: 13 }}>加载讨论中...</div>
       ) : comments.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 20, color: '#ddd', fontSize: 13 }}>还没有评论，来说两句吧</div>
+        <div style={{ textAlign: 'center', padding: 20, color: '#ddd', fontSize: 13 }}>还没有讨论，先确认下集合点吧</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {comments.map(c => (
-            <div key={c.id} style={{ display: 'flex', gap: 10 }}>
-              <Avatar src={c.avatar_url} nickname={c.nickname} size={32} />
+          {comments.map((comment) => (
+            <div key={comment.id} style={{ display: 'flex', gap: 10 }}>
+              <Avatar src={comment.avatar_url} nickname={comment.nickname} size={32} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#555' }}>{c.nickname}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#555' }}>{comment.nickname}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 11, color: '#ccc' }}>{timeAgo(c.created_at)}</span>
-                    {c.user_id === user?.id && (
+                    <span style={{ fontSize: 11, color: '#ccc' }}>{timeAgo(comment.created_at)}</span>
+                    {comment.user_id === user?.id && (
                       <button
-                        onClick={() => handleDelete(c.id)}
+                        type="button"
+                        onClick={() => handleDelete(comment.id)}
                         style={{ background: 'none', border: 'none', color: '#ccc', fontSize: 11, cursor: 'pointer', padding: 0 }}
                       >
                         删除
@@ -116,7 +156,7 @@ export default function CommentSection({ activityId }) {
                   </div>
                 </div>
                 <div style={{ fontSize: 14, color: '#444', lineHeight: 1.6, wordBreak: 'break-word' }}>
-                  {c.content}
+                  {comment.content}
                 </div>
               </div>
             </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { useNavigate } from 'react-router-dom'
-import { useToast } from '../components/Toast'
+import { Link, useNavigate } from 'react-router-dom'
+import { useToast } from '../components/toast-context'
 
 export default function LoginPage() {
   const [mode, setMode] = useState('email')
@@ -126,7 +126,7 @@ export default function LoginPage() {
               <button onClick={() => { setIsSignUp(!isSignUp); setMessage('') }} style={{
                 background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600,
                 color: 'var(--accent)', fontSize: 14, fontFamily: 'inherit',
-              }}>
+              }} type="button">
                 {isSignUp ? '去登录' : '去注册'}
               </button>
             </p>
@@ -185,8 +185,11 @@ export default function LoginPage() {
           微信登录
         </button>
 
-        <p style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: '#ccc' }}>
-          登录即表示同意搭搭的用户协议和隐私政策
+        <p style={{ textAlign: 'center', marginTop: 24, fontSize: 11, color: '#ccc', lineHeight: 1.7 }}>
+          登录即表示同意搭搭的
+          <Link to="/legal/terms" style={{ color: 'var(--accent)', textDecoration: 'none', margin: '0 4px' }}>用户协议</Link>
+          和
+          <Link to="/legal/privacy" style={{ color: 'var(--accent)', textDecoration: 'none', marginLeft: 4 }}>隐私政策</Link>
         </p>
       </div>
     </div>

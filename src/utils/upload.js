@@ -3,8 +3,8 @@ import { supabase } from '../supabaseClient'
 /**
  * 上传图片到 Supabase Storage
  * @param {File} file - 图片文件
- * @param {string} bucket - 'avatars' 或 'covers'
- * @param {string} folderId - 用户 ID 或活动 ID（用作文件夹名）
+ * @param {string} bucket - 'avatars'、'covers' 或 'photos'
+ * @param {string} folderId - 存储目录，首层建议始终为当前用户 ID
  * @returns {string|null} 公开 URL 或 null
  */
 export async function uploadImage(file, bucket, folderId) {

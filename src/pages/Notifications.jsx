@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
 import { SkeletonMessages } from '../components/Skeleton'
-import { timeAgo } from '../utils/helpers'
+import { timeAgo, getUserInfo } from '../utils/helpers'
 import Avatar from '../components/Avatar'
-import { getUserInfo } from '../utils/helpers'
 
 export default function Notifications() {
   const { user } = useAuth()
@@ -15,52 +14,76 @@ export default function Notifications() {
   const [loading, setLoading] = useState(true)
   const [userInfos, setUserInfos] = useState({})
 
-  useEffect(() => { fetchNotifications() }, [])
+  useEffect(() => {
+    let active = true
 
-  const fetchNotifications = async () => {
-    const { data } = await supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
-    setNotifications(data || [])
+    async function loadNotifications() {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50)
 
-    // 预加载用户信息
-    if (data) {
+      if (!active) return
+      setNotifications(data || [])
+
+      const ids = [...new Set((data || []).filter((item) => item.from_user_id).map((item) => item.from_user_id))]
       const infos = {}
-      const userIds = [...new Set(data.filter(n => n.from_user_id).map(n => n.from_user_id))]
-      for (const uid of userIds) {
-        infos[uid] = await getUserInfo(uid)
+      for (const id of ids) {
+        infos[id] = await getUserInfo(id)
       }
+
+      if (!active) return
       setUserInfos(infos)
+      setLoading(false)
     }
-    setLoading(false)
+
+    loadNotifications()
+    return () => {
+      active = false
+    }
+  }, [user.id])
+
+  async function handleRead(notification) {
+    await supabase.from('notifications').update({ is_read: true }).eq('id', notification.id)
+    setNotifications((prev) => prev.map((item) => (item.id === notification.id ? { ...item, is_read: true } : item)))
+    if (notification.activity_id) navigate(`/activity/${notification.activity_id}`)
+    else if (notification.from_user_id) navigate(`/user/${notification.from_user_id}`)
   }
 
-  const handleRead = async (n) => {
-    await supabase.from('notifications').update({ is_read: true }).eq('id', n.id)
-    setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x))
-    if (n.activity_id) navigate(`/activity/${n.activity_id}`)
-    else if (n.from_user_id) navigate(`/user/${n.from_user_id}`)
-  }
-
-  const handleReadAll = async () => {
-    const unread = notifications.filter(n => !n.is_read)
+  async function handleReadAll() {
+    const unread = notifications.filter((item) => !item.is_read)
     if (unread.length === 0) return
-    await supabase.from('notifications').update({ is_read: true }).in('id', unread.map(n => n.id))
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    await supabase.from('notifications').update({ is_read: true }).in('id', unread.map((item) => item.id))
+    setNotifications((prev) => prev.map((item) => ({ ...item, is_read: true })))
   }
 
-  const unreadCount = notifications.filter(n => !n.is_read).length
+  const unreadCount = notifications.filter((item) => !item.is_read).length
 
-  const getIcon = (type) => {
+  function getIcon(type) {
     switch (type) {
-      case 'join_activity': return '🆕'
-      case 'friend_request': return '👋'
-      case 'friend_accepted': return '🎉'
-      case 'new_message': return '💬'
-      case 'new_comment': return '💬'
-      default: return '🔔'
+      case 'join_activity':
+        return '🆕'
+      case 'friend_request':
+        return '👋'
+      case 'friend_accepted':
+        return '🎉'
+      case 'new_comment':
+        return '💬'
+      default:
+        return '🔔'
     }
   }
 
-  if (loading) return <div><Navbar title="通知" showBack /><SkeletonMessages /></div>
+  if (loading) {
+    return (
+      <div>
+        <Navbar title="通知" showBack />
+        <SkeletonMessages />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -70,43 +93,54 @@ export default function Notifications() {
           <div className="empty-state">
             <div className="empty-state-icon">🔔</div>
             <div className="empty-state-title">暂无通知</div>
-            <div className="empty-state-desc">有新消息时会在这里提醒你</div>
+            <div className="empty-state-desc">有人加入、评论或与你互动时，会在这里提醒你。</div>
           </div>
         ) : (
           <>
             {unreadCount > 0 && (
-              <div style={{ padding: '8px 4', textAlign: 'right', marginBottom: 4 }}>
+              <div style={{ padding: '8px 4px', textAlign: 'right', marginBottom: 4 }}>
                 <button style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }} onClick={handleReadAll}>
                   全部标为已读
                 </button>
               </div>
             )}
-            {notifications.map(n => {
-              const fromInfo = userInfos[n.from_user_id]
+            {notifications.map((notification) => {
+              const fromInfo = userInfos[notification.from_user_id]
               return (
-                <div key={n.id}
+                <div
+                  key={notification.id}
                   style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 12,
-                    padding: 14, marginBottom: 2, borderRadius: 12, cursor: 'pointer',
-                    background: n.is_read ? 'transparent' : '#f8f7ff',
-                    transition: 'background 0.15s',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    padding: 14,
+                    marginBottom: 2,
+                    borderRadius: 12,
+                    cursor: 'pointer',
+                    background: notification.is_read ? 'transparent' : '#f8f7ff',
                   }}
-                  onClick={() => handleRead(n)}
+                  onClick={() => handleRead(notification)}
                 >
                   <div style={{ flexShrink: 0 }}>
                     {fromInfo ? (
                       <Avatar src={fromInfo.avatar_url} nickname={fromInfo.nickname} size={40} />
                     ) : (
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{getIcon(n.type)}</div>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                        {getIcon(notification.type)}
+                      </div>
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <span style={{ fontWeight: n.is_read ? 400 : 600, fontSize: 14 }}>{n.title}</span>
-                      {!n.is_read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginLeft: 8 }} />}
+                      <span style={{ fontWeight: notification.is_read ? 400 : 600, fontSize: 14 }}>{notification.title}</span>
+                      {!notification.is_read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginLeft: 8 }} />}
                     </div>
-                    {n.content && <div style={{ fontSize: 13, color: '#999', lineHeight: 1.4, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.content}</div>}
-                    <div style={{ fontSize: 11, color: '#ccc' }}>{timeAgo(n.created_at)}</div>
+                    {notification.content && (
+                      <div style={{ fontSize: 13, color: '#999', lineHeight: 1.4, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {notification.content}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: '#ccc' }}>{timeAgo(notification.created_at)}</div>
                   </div>
                 </div>
               )

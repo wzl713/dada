@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { useAuth } from '../App'
+import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
 import Avatar from '../components/Avatar'
 import CommentSection from '../components/CommentSection'
 import PhotoGallery from '../components/PhotoGallery'
 import ShareButton from '../components/ShareButton'
+import ActivityReviewSection from '../components/ActivityReviewSection'
 import { SkeletonDetail } from '../components/Skeleton'
 import { formatTime, getUserInfo } from '../utils/helpers'
-import { useToast } from '../components/Toast'
+import { useToast } from '../components/toast-context'
+import { getBlockRelationship } from '../utils/safety'
 
 export default function ActivityDetail() {
   const { id } = useParams()
@@ -21,64 +23,175 @@ export default function ActivityDetail() {
   const [members, setMembers] = useState([])
   const [isJoined, setIsJoined] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [blockState, setBlockState] = useState({ blockedByMe: false, blockedMe: false })
 
-  useEffect(() => { fetchDetail() }, [id])
+  useEffect(() => {
+    async function loadDetail() {
+      setLoading(true)
+      const { data: act } = await supabase.from('activities').select('*').eq('id', id).single()
+      if (!act) {
+        setLoading(false)
+        return
+      }
 
-  const fetchDetail = async () => {
-    setLoading(true)
-    const { data: act } = await supabase.from('activities').select('*').eq('id', id).single()
-    if (!act) { setLoading(false); return }
-    setActivity(act)
+      const creatorInfo = await getUserInfo(act.creator_id)
+      setCreator({ id: act.creator_id, ...creatorInfo })
 
-    const creatorInfo = await getUserInfo(act.creator_id)
-    setCreator({ id: act.creator_id, ...creatorInfo })
+      const { data: memberRows } = await supabase
+        .from('activity_members')
+        .select('user_id, joined_at')
+        .eq('activity_id', id)
 
-    const { data: mems } = await supabase.from('activity_members').select('user_id, joined_at').eq('activity_id', id)
-    if (mems) {
-      const memsWithNames = await Promise.all(
-        mems.map(async m => {
-          const info = await getUserInfo(m.user_id)
-          return { id: m.user_id, ...info, joinedAt: m.joined_at }
+      const memberInfos = await Promise.all(
+        (memberRows || []).map(async (item) => {
+          const info = await getUserInfo(item.user_id)
+          return { id: item.user_id, ...info, joinedAt: item.joined_at }
         })
       )
-      setMembers(memsWithNames)
-      setIsJoined(mems.some(m => m.user_id === user.id))
+
+      setActivity(act)
+      setMembers(memberInfos)
+      setIsJoined((memberRows || []).some((item) => item.user_id === user.id))
+
+      if (act.creator_id !== user.id) {
+        setBlockState(await getBlockRelationship(user.id, act.creator_id))
+      }
+
+      setLoading(false)
     }
-    setLoading(false)
+
+    loadDetail()
+  }, [id, user.id])
+
+  async function refreshMembers() {
+    const { data: memberRows } = await supabase
+      .from('activity_members')
+      .select('user_id, joined_at')
+      .eq('activity_id', id)
+
+    const memberInfos = await Promise.all(
+      (memberRows || []).map(async (item) => {
+        const info = await getUserInfo(item.user_id)
+        return { id: item.user_id, ...info, joinedAt: item.joined_at }
+      })
+    )
+
+    setMembers(memberInfos)
+    setIsJoined((memberRows || []).some((item) => item.user_id === user.id))
   }
 
-  const handleJoin = async () => {
-    const { error } = await supabase.from('activity_members').insert({ activity_id: id, user_id: user.id })
-    if (!error) { setIsJoined(true); fetchDetail(); toast.success('加入成功！') }
-    else toast.error('操作失败')
+  async function handleJoin() {
+    if (blockState.blockedByMe || blockState.blockedMe) {
+      toast.error('你与发起人存在拉黑关系，无法加入')
+      return
+    }
+
+    const { error } = await supabase
+      .from('activity_members')
+      .insert({ activity_id: id, user_id: user.id })
+
+    if (error) {
+      toast.error(error.message || '加入失败')
+      return
+    }
+
+    setIsJoined(true)
+    toast.success('加入成功，已开放活动内讨论')
+    refreshMembers()
   }
 
-  const handleLeave = async () => {
-    const { error } = await supabase.from('activity_members').delete().match({ activity_id: id, user_id: user.id })
-    if (!error) { setIsJoined(false); fetchDetail() }
+  async function handleLeave() {
+    const { error } = await supabase
+      .from('activity_members')
+      .delete()
+      .match({ activity_id: id, user_id: user.id })
+
+    if (error) {
+      toast.error('取消失败')
+      return
+    }
+
+    setIsJoined(false)
+    refreshMembers()
   }
 
-  const handleDelete = async () => {
-    if (!confirm('确定要删除这个活动吗？所有参与记录也会一并删除。')) return
+  async function handleDelete() {
+    if (!window.confirm('确定要删除这个活动吗？所有参与记录和互评也会一并删除。')) return
     const { error } = await supabase.from('activities').delete().eq('id', id)
-    if (!error) navigate('/')
+    if (error) {
+      toast.error('删除失败')
+      return
+    }
+    navigate('/')
   }
 
-  const isCreator = user?.id === activity?.creator_id
-  const isFull = activity ? members.length >= activity.max_members : false
-  const isExpired = activity ? new Date(activity.start_time) < new Date() : false
+  async function handleBlockCreator() {
+    if (!creator || creator.id === user.id) return
+    if (!window.confirm(`拉黑 ${creator.nickname} 后，你将不再看到 TA 的活动。继续吗？`)) return
 
-  if (loading) return <div><Navbar title="活动详情" showBack /><SkeletonDetail /></div>
+    const reason = window.prompt('可选：记录一下拉黑原因，便于你自己回看。', '') || ''
+    const { error } = await supabase.from('blocked_users').insert({
+      blocker_id: user.id,
+      blocked_user_id: creator.id,
+      reason,
+    })
 
-  if (!activity) return (
-    <div><Navbar title="活动详情" showBack />
-      <div className="empty-state">
-        <div className="empty-state-icon">🤷</div>
-        <div className="empty-state-title">活动不存在</div>
-        <div className="empty-state-desc">该活动可能已被删除</div>
+    if (error) {
+      toast.error(error.message || '拉黑失败')
+      return
+    }
+
+    setBlockState({ blockedByMe: true, blockedMe: false })
+    toast.success('已拉黑，首页不会再展示 TA 的活动')
+  }
+
+  async function handleReport(type) {
+    const reason = window.prompt(type === 'activity' ? '请填写举报该活动的原因' : '请填写举报该用户的原因')
+    if (!reason?.trim()) return
+
+    const payload = {
+      reporter_id: user.id,
+      reason: reason.trim(),
+      report_type: type,
+      activity_id: type === 'activity' ? id : null,
+      reported_user_id: type === 'user' ? creator?.id || null : null,
+    }
+
+    const { error } = await supabase.from('user_reports').insert(payload)
+    if (error) {
+      toast.error(error.message || '举报失败')
+      return
+    }
+
+    toast.success('举报已提交，我们会尽快处理')
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <Navbar title="活动详情" showBack />
+        <SkeletonDetail />
       </div>
-    </div>
-  )
+    )
+  }
+
+  if (!activity) {
+    return (
+      <div>
+        <Navbar title="活动详情" showBack />
+        <div className="empty-state">
+          <div className="empty-state-icon">🤷</div>
+          <div className="empty-state-title">活动不存在</div>
+          <div className="empty-state-desc">该活动可能已被删除</div>
+        </div>
+      </div>
+    )
+  }
+
+  const isCreator = user.id === activity.creator_id
+  const isFull = members.length >= activity.max_members
+  const isExpired = new Date(activity.start_time) < new Date()
+  const canParticipate = isCreator || isJoined
 
   return (
     <div>
@@ -87,74 +200,124 @@ export default function ActivityDetail() {
       <div className="container" style={{ paddingTop: 12, paddingBottom: 100 }}>
         {isExpired && (
           <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 16px', borderRadius: 12, marginBottom: 12, fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
-            ⏰ 该活动已结束
+            该活动已结束，可以在下方进行互评
           </div>
         )}
 
-        {/* 封面图 */}
-        {activity.cover_url && (
-          <div style={{
-            width: '100%', height: 200, borderRadius: 16, marginBottom: 12,
-            background: `url(${activity.cover_url}) center/cover no-repeat`,
-            overflow: 'hidden', boxShadow: 'var(--shadow-md)',
-          }} />
+        {(blockState.blockedByMe || blockState.blockedMe) && (
+          <div style={{ background: '#fff7ed', color: '#c2410c', padding: '10px 16px', borderRadius: 12, marginBottom: 12, fontSize: 13, lineHeight: 1.6 }}>
+            {blockState.blockedByMe
+              ? '你已拉黑该发起人，不能再加入或讨论。'
+              : '对方已将你拉黑，当前活动仅可查看基础信息。'}
+          </div>
         )}
 
-        {/* 主信息 */}
+        {activity.cover_url && (
+          <div
+            style={{
+              width: '100%',
+              height: 200,
+              borderRadius: 16,
+              marginBottom: 12,
+              background: `url(${activity.cover_url}) center/cover no-repeat`,
+              overflow: 'hidden',
+              boxShadow: 'var(--shadow-md)',
+            }}
+          />
+        )}
+
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, gap: 10 }}>
             <h2 style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.4, flex: 1 }}>{activity.title}</h2>
             {activity.category && activity.category !== '其他' && (
-              <span className="tag tag-accent" style={{ flexShrink: 0, marginLeft: 8 }}>{activity.category}</span>
+              <span className="tag tag-accent" style={{ flexShrink: 0 }}>{activity.category}</span>
             )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: '#666', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 16 }}>🕐</span><span>{formatTime(activity.start_time)}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 16 }}>📍</span><span>{activity.location}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ fontSize: 16 }}>👥</span><span>{members.length}/{activity.max_members} 人已参加</span></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: '#666', marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>🕐</span><span>{formatTime(activity.start_time)}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📍</span><span>{activity.location}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>👥</span><span>{members.length}/{activity.max_members} 人已参加</span></div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: activity.description ? 16 : 0 }}>
+            {activity.gender_requirement && activity.gender_requirement !== '不限' && (
+              <span className="tag tag-accent">🙋 {activity.gender_requirement}</span>
+            )}
+            <span className="tag">⚡ 不聊天太久，优先直接见面</span>
           </div>
 
           {activity.description && (
-            <div style={{ fontSize: 14, color: '#666', lineHeight: 1.7, whiteSpace: 'pre-wrap', padding: '12px 0', borderTop: '1px solid var(--border-light)' }}>
-              <div style={{ fontSize: 11, color: '#bbb', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>活动详情</div>
+            <div style={{ fontSize: 14, color: '#666', lineHeight: 1.7, whiteSpace: 'pre-wrap', paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
               {activity.description}
             </div>
           )}
-
-          {/* 分享按钮 */}
-          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-            <ShareButton activity={activity} />
-          </div>
         </div>
 
-        {/* 发布者 */}
         <div className="card">
-          <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>发布者</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
-            onClick={() => { if (!isCreator) navigate(`/user/${activity.creator_id}`) }}>
-            <Avatar src={creator.avatar_url} nickname={creator.nickname} size={40} />
+          <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>发起人</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: isCreator ? 'default' : 'pointer' }} onClick={() => { if (!isCreator) navigate(`/user/${activity.creator_id}`) }}>
+            <Avatar src={creator?.avatar_url} nickname={creator?.nickname || ''} size={40} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 15 }}>{creator.nickname}{isCreator && <span style={{ fontSize: 12, color: '#bbb', marginLeft: 8 }}>(我)</span>}</div>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>
+                {creator?.nickname}
+                {isCreator && <span style={{ fontSize: 12, color: '#bbb', marginLeft: 8 }}>(我)</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                {creator?.school_name && <span className="tag">🎓 {creator.school_name}</span>}
+                <span className="tag tag-success">✅ 活动后可互评</span>
+              </div>
             </div>
             {!isCreator && <span style={{ color: '#ddd', fontSize: 18 }}>›</span>}
           </div>
+
+          {!isCreator && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <button type="button" className="btn-ghost" onClick={() => handleReport('user')}>举报用户</button>
+              {!blockState.blockedByMe && (
+                <button type="button" className="btn-ghost" onClick={handleBlockCreator}>拉黑用户</button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* 参与者 */}
+        <div className="card">
+          <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>集合与安全</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, color: '#666', lineHeight: 1.7 }}>
+            <div>
+              <div style={{ fontWeight: 600, color: '#333', marginBottom: 4 }}>集合方式</div>
+              <div>{activity.meetup_note || '发起人暂未补充集合说明，建议进活动后尽快确认。'}</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 600, color: '#333', marginBottom: 4 }}>安全提示</div>
+              <div>{activity.safety_notice || '建议优先选择公开场所，并提前把行程分享给朋友。'}</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <ShareButton activity={activity} label="分享行程" />
+            {!isCreator && (
+              <button type="button" className="btn-ghost" onClick={() => handleReport('activity')}>举报活动</button>
+            )}
+          </div>
+        </div>
+
         {members.length > 0 && (
           <div className="card">
             <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              参与者 ({members.length})
+              已加入的人 ({members.length})
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {members.map(m => (
-                <div key={m.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: m.id !== user.id ? 'pointer' : 'default' }}
-                  onClick={() => { if (m.id !== user.id) navigate(`/user/${m.id}`) }}>
-                  <Avatar src={m.avatar_url} nickname={m.nickname} size={32} />
+              {members.map((member) => (
+                <div
+                  key={member.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: member.id !== user.id ? 'pointer' : 'default' }}
+                  onClick={() => { if (member.id !== user.id) navigate(`/user/${member.id}`) }}
+                >
+                  <Avatar src={member.avatar_url} nickname={member.nickname} size={32} />
                   <span style={{ fontSize: 13 }}>
-                    {m.nickname}{m.id === user.id && <span style={{ color: '#bbb', marginLeft: 4 }}>(我)</span>}
+                    {member.nickname}
+                    {member.id === user.id && <span style={{ color: '#bbb', marginLeft: 4 }}>(我)</span>}
                   </span>
                 </div>
               ))}
@@ -162,29 +325,38 @@ export default function ActivityDetail() {
           </div>
         )}
 
-        {/* 评论区 */}
-        <CommentSection activityId={id} />
+        <CommentSection activityId={id} canParticipate={canParticipate && !blockState.blockedByMe && !blockState.blockedMe} />
 
-        {/* 活动相册 */}
-        <PhotoGallery activityId={id} />
+        <PhotoGallery activityId={id} canUpload={canParticipate && !blockState.blockedByMe && !blockState.blockedMe} />
 
-        {/* 底部操作 */}
+        <ActivityReviewSection
+          activityId={id}
+          activity={activity}
+          creator={creator}
+          members={members}
+          isCreator={isCreator}
+          isJoined={isJoined}
+          isExpired={isExpired}
+        />
+
         {isCreator ? (
           <div style={{ display: 'flex', gap: 12, position: 'fixed', bottom: 70, left: 16, right: 16, maxWidth: 448, margin: '0 auto' }}>
-            {!isExpired && <button className="btn-primary" style={{ flex: 1 }} onClick={() => navigate(`/edit/${id}`)}>✏️ 编辑</button>}
+            {!isExpired && <button className="btn-primary" style={{ flex: 1 }} onClick={() => navigate(`/edit/${id}`)}>编辑活动</button>}
             <button className="btn-outline" style={{ flex: isExpired ? 1 : undefined, borderColor: '#ef4444', color: '#ef4444' }} onClick={handleDelete}>删除</button>
           </div>
         ) : !isExpired && (
           <div style={{ position: 'fixed', bottom: 70, left: 16, right: 16, maxWidth: 448, margin: '0 auto' }}>
             {isJoined ? (
               <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ flex: 1, padding: 14, background: 'var(--success-bg)', color: 'var(--success)', borderRadius: 12, fontSize: 16, fontWeight: 600, textAlign: 'center' }}>✓ 已加入</div>
-                <button className="btn-outline" style={{ flex: 1 }} onClick={handleLeave}>取消</button>
+                <div style={{ flex: 1, padding: 14, background: 'var(--success-bg)', color: 'var(--success)', borderRadius: 12, fontSize: 16, fontWeight: 600, textAlign: 'center' }}>已加入</div>
+                <button className="btn-outline" style={{ flex: 1 }} onClick={handleLeave}>取消报名</button>
               </div>
             ) : isFull ? (
               <div style={{ width: '100%', padding: 14, background: '#f5f5f5', color: '#bbb', borderRadius: 12, fontSize: 16, fontWeight: 600, textAlign: 'center' }}>已满员</div>
             ) : (
-              <button className="btn-primary" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }} onClick={handleJoin}>加入活动</button>
+              <button className="btn-primary" onClick={handleJoin} disabled={blockState.blockedByMe || blockState.blockedMe}>
+                立即加入
+              </button>
             )}
           </div>
         )}

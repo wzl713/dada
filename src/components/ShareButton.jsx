@@ -1,35 +1,34 @@
 import { useState } from 'react'
-import { useToast } from './Toast'
+import { useToast } from './toast-context'
 
-export default function ShareButton({ activity }) {
+export default function ShareButton({ activity, label = '分享' }) {
   const toast = useToast()
   const [showMenu, setShowMenu] = useState(false)
 
   const shareData = {
     title: activity.title,
     text: `${activity.title} · ${new Date(activity.start_time).getMonth() + 1}月${new Date(activity.start_time).getDate()}日 · ${activity.location}`,
-    url: window.location.origin + '/activity/' + activity.id,
+    url: `${window.location.origin}/activity/${activity.id}`,
   }
 
-  const handleNativeShare = async () => {
+  async function handleNativeShare() {
     if (navigator.share) {
       try {
         await navigator.share(shareData)
-      } catch (e) {
-        // 用户取消分享，不做处理
+      } catch {
+        // 用户取消分享时不提示
       }
     } else {
-      handleCopyLink()
+      await handleCopyLink()
     }
     setShowMenu(false)
   }
 
-  const handleCopyLink = async () => {
+  async function handleCopyLink() {
     try {
       await navigator.clipboard.writeText(shareData.url)
       toast.success('链接已复制')
     } catch {
-      // fallback
       const input = document.createElement('input')
       input.value = shareData.url
       document.body.appendChild(input)
@@ -44,28 +43,47 @@ export default function ShareButton({ activity }) {
   return (
     <div style={{ position: 'relative' }}>
       <button
+        type="button"
         className="btn-ghost"
         style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-        onClick={() => setShowMenu(!showMenu)}
+        onClick={() => setShowMenu((prev) => !prev)}
       >
-        📤 分享
+        📤 {label}
       </button>
 
       {showMenu && (
         <>
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 200 }} onClick={() => setShowMenu(false)} />
-          <div style={{
-            position: 'absolute', bottom: '100%', right: 0, marginBottom: 8,
-            background: '#fff', borderRadius: 14, padding: 8,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 201,
-            minWidth: 140,
-          }}>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200 }} onClick={() => setShowMenu(false)} />
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              right: 0,
+              marginBottom: 8,
+              background: '#fff',
+              borderRadius: 14,
+              padding: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              zIndex: 201,
+              minWidth: 140,
+            }}
+          >
             {navigator.share && (
               <button
+                type="button"
                 style={{
-                  width: '100%', padding: '10px 14px', background: 'none', border: 'none',
-                  textAlign: 'left', fontSize: 14, cursor: 'pointer', borderRadius: 10,
-                  display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit',
+                  width: '100%',
+                  padding: '10px 14px',
+                  background: 'none',
+                  border: 'none',
+                  textAlign: 'left',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  borderRadius: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  fontFamily: 'inherit',
                 }}
                 onClick={handleNativeShare}
               >
@@ -73,10 +91,20 @@ export default function ShareButton({ activity }) {
               </button>
             )}
             <button
+              type="button"
               style={{
-                width: '100%', padding: '10px 14px', background: 'none', border: 'none',
-                textAlign: 'left', fontSize: 14, cursor: 'pointer', borderRadius: 10,
-                display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit',
+                width: '100%',
+                padding: '10px 14px',
+                background: 'none',
+                border: 'none',
+                textAlign: 'left',
+                fontSize: 14,
+                cursor: 'pointer',
+                borderRadius: 10,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                fontFamily: 'inherit',
               }}
               onClick={handleCopyLink}
             >
