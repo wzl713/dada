@@ -7,7 +7,7 @@ import { uploadImage, compressImage } from '../utils/upload'
 import { SkeletonProfile } from '../components/Skeleton'
 import { formatShortTime } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
-import { getReviewSummary } from '../utils/trust'
+import { getReliabilitySummary } from '../utils/trust'
 
 export default function ProfilePage() {
   const { user } = useAuth()
@@ -22,11 +22,16 @@ export default function ProfilePage() {
     school_name: '',
     bio: '',
   })
-  const [reviewSummary, setReviewSummary] = useState({
+  const [reliabilitySummary, setReliabilitySummary] = useState({
     averageRating: 0,
     reviewCount: 0,
     topTags: [],
     positiveRate: 0,
+    reliabilityScore: 0,
+    punctualRate: 0,
+    punctualSampleCount: 0,
+    participatedCount: 0,
+    reportCount: 0,
   })
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -47,7 +52,7 @@ export default function ProfilePage() {
           .select('nickname, avatar_url, school_name, bio')
           .eq('id', user.id)
           .single(),
-        getReviewSummary(user.id),
+        getReliabilitySummary(user.id),
       ])
 
       if (!active) return
@@ -63,7 +68,7 @@ export default function ProfilePage() {
       setNickname(name)
       setSchoolName(data?.school_name || '')
       setBio(data?.bio || '')
-      setReviewSummary(summary)
+      setReliabilitySummary(summary)
       setLoading(false)
     }
 
@@ -87,6 +92,7 @@ export default function ProfilePage() {
         .from('activity_members')
         .select('activity_id')
         .eq('user_id', user.id)
+        .eq('status', 'approved')
 
       let joinedActivitiesList = []
       if (joined?.length) {
@@ -236,31 +242,31 @@ export default function ProfilePage() {
 
         <div className="card" style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            我的活动口碑
+            我的靠谱度
           </div>
           <div style={{ display: 'flex', gap: 20, justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ textAlign: 'center', flex: 1 }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)' }}>
-                {reviewSummary.reviewCount ? reviewSummary.averageRating : '--'}
+                {reliabilitySummary.participatedCount || reliabilitySummary.reviewCount ? reliabilitySummary.reliabilityScore : '--'}
               </div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>平均评分</div>
-            </div>
-            <div style={{ textAlign: 'center', flex: 1 }}>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>{reviewSummary.reviewCount}</div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>收到评价</div>
+              <div style={{ fontSize: 11, color: '#bbb' }}>靠谱度评分</div>
             </div>
             <div style={{ textAlign: 'center', flex: 1 }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: '#22c55e' }}>
-                {reviewSummary.reviewCount ? `${reviewSummary.positiveRate}%` : '--'}
+                {reliabilitySummary.punctualSampleCount ? `${reliabilitySummary.punctualRate}%` : '--'}
               </div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>好评率</div>
+              <div style={{ fontSize: 11, color: '#bbb' }}>守约率</div>
+            </div>
+            <div style={{ textAlign: 'center', flex: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>{reliabilitySummary.participatedCount}</div>
+              <div style={{ fontSize: 11, color: '#bbb' }}>已参加</div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {reviewSummary.topTags.length > 0 ? (
-              reviewSummary.topTags.map((tag) => <span key={tag} className="tag tag-accent">{tag}</span>)
+            {reliabilitySummary.topTags.length > 0 ? (
+              reliabilitySummary.topTags.map((tag) => <span key={tag} className="tag tag-accent">{tag}</span>)
             ) : (
-              <span style={{ fontSize: 13, color: '#999' }}>完成活动后，参与者可以互相评价。</span>
+              <span style={{ fontSize: 13, color: '#999' }}>活动通过确认和互评后，会慢慢形成你的靠谱度。</span>
             )}
           </div>
         </div>

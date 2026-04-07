@@ -6,7 +6,7 @@ import Navbar from '../components/Navbar'
 import { useToast } from '../components/toast-context'
 
 const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
-const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先']
+const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先', '男生优先']
 
 export default function EditActivity() {
   const { id } = useParams()
@@ -143,6 +143,9 @@ export default function EditActivity() {
             onChange={(e) => update('start_time', e.target.value)}
             required
           />
+          <div style={{ fontSize: 12, color: '#999', lineHeight: 1.6, marginTop: -8 }}>
+            活动时间和地点会公开展示，请尽量写清楚，并优先选择公共场所。
+          </div>
 
           <div>
             <label style={{ fontSize: 14, color: '#666', marginBottom: 6, display: 'block' }}>人数上限</label>

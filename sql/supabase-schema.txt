@@ -168,6 +168,7 @@ CREATE POLICY "Activity members can create comments" ON comments
         SELECT 1 FROM activity_members
         WHERE activity_members.activity_id = comments.activity_id
         AND activity_members.user_id = auth.uid()
+        AND activity_members.status = 'approved'
       )
     )
   );
@@ -216,6 +217,7 @@ CREATE POLICY "Activity members can upload photos" ON activity_photos
         SELECT 1 FROM activity_members
         WHERE activity_members.activity_id = activity_photos.activity_id
         AND activity_members.user_id = auth.uid()
+        AND activity_members.status = 'approved'
       )
     )
   );
@@ -294,6 +296,92 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
 
+DO $$ BEGIN
+  ALTER TABLE activity_members ADD COLUMN status TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE activity_members ADD COLUMN approved_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE activity_members ADD COLUMN departure_confirmed_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
+UPDATE activity_members
+SET
+  status = 'approved',
+  approved_at = COALESCE(approved_at, joined_at, now())
+WHERE status IS NULL;
+
+ALTER TABLE activity_members ALTER COLUMN status SET DEFAULT 'pending';
+ALTER TABLE activity_members ALTER COLUMN status SET NOT NULL;
+
+DO $$ BEGIN
+  ALTER TABLE activity_members
+    ADD CONSTRAINT activity_members_status_check
+    CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+DECLARE
+  policy_record RECORD;
+BEGIN
+  FOR policy_record IN
+    SELECT policyname
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'activity_members'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.activity_members', policy_record.policyname);
+  END LOOP;
+END $$;
+
+ALTER TABLE activity_members ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Activity members are viewable by everyone" ON activity_members
+  FOR SELECT
+  USING (true);
+
+CREATE POLICY "Users can request to join activities" ON activity_members
+  FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND status = 'pending'
+  );
+
+CREATE POLICY "Creators can update activity member status" ON activity_members
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM activities
+      WHERE activities.id = activity_members.activity_id
+      AND activities.creator_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM activities
+      WHERE activities.id = activity_members.activity_id
+      AND activities.creator_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users and creators can delete activity members" ON activity_members
+  FOR DELETE
+  USING (
+    auth.uid() = user_id
+    OR EXISTS (
+      SELECT 1 FROM activities
+      WHERE activities.id = activity_members.activity_id
+      AND activities.creator_id = auth.uid()
+    )
+  );
+
 
 -- ==========================================
 -- §3  视图：活动 + 参与人数
@@ -304,13 +392,22 @@ DROP VIEW IF EXISTS activities_with_count;
 CREATE OR REPLACE VIEW activities_with_count AS
 SELECT
   a.*,
-  COALESCE(mc.cnt, 0) AS member_count
+  COALESCE(mc.cnt, 0) AS member_count,
+  COALESCE(mc.pending_count, 0) AS pending_count
 FROM activities a
 LEFT JOIN (
-  SELECT activity_id, COUNT(*) AS cnt
+  SELECT
+    activity_id,
+    COUNT(*) FILTER (WHERE status = 'approved') AS cnt,
+    COUNT(*) FILTER (WHERE status = 'pending') AS pending_count
   FROM activity_members
   GROUP BY activity_id
 ) mc ON mc.activity_id = a.id;
+
+DO $$ BEGIN
+  ALTER VIEW activities_with_count SET (security_invoker = true);
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 
 -- ==========================================
@@ -345,11 +442,11 @@ BEGIN
     VALUES (
       (SELECT creator_id FROM activities WHERE id = NEW.activity_id),
       'join_activity',
-      '有人加入了你的活动',
+      '有人申请加入你的活动',
       COALESCE(
         (SELECT nickname FROM profiles WHERE id = NEW.user_id),
         '新用户'
-      ) || ' 加入了你的活动「' ||
+      ) || ' 申请加入你的活动「' ||
       COALESCE(
         (SELECT title FROM activities WHERE id = NEW.activity_id),
         '未知活动'
@@ -456,7 +553,44 @@ CREATE TRIGGER on_join_points
   AFTER INSERT ON activity_members
   FOR EACH ROW EXECUTE FUNCTION public.award_join_points();
 
--- 4g. 修复函数（一次性使用，SECURITY DEFINER 绕过 RLS）
+-- 4g. 确认出发：仅允许已通过成员在活动前 1 小时内确认
+CREATE OR REPLACE FUNCTION public.confirm_activity_departure(p_activity_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE public.activity_members am
+  SET departure_confirmed_at = now()
+  WHERE am.activity_id = p_activity_id
+    AND am.user_id = auth.uid()
+    AND am.status = 'approved'
+    AND am.departure_confirmed_at IS NULL
+    AND EXISTS (
+      SELECT 1
+      FROM public.activities a
+      WHERE a.id = p_activity_id
+        AND a.start_time >= now()
+        AND a.start_time <= now() + INTERVAL '1 hour'
+    );
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '确认出发仅在活动开始前1小时内开放，且必须先通过申请';
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.confirm_activity_departure(UUID) TO authenticated;
+
+-- 4h. 安全聚合：只返回某用户被举报数量，不暴露举报内容
+CREATE OR REPLACE FUNCTION public.get_user_report_count(p_user_id UUID)
+RETURNS INTEGER AS $$
+  SELECT COUNT(*)::INTEGER
+  FROM public.user_reports
+  WHERE reported_user_id = p_user_id
+    AND status != 'rejected';
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = public;
+
+GRANT EXECUTE ON FUNCTION public.get_user_report_count(UUID) TO authenticated;
+
+-- 4i. 修复函数（一次性使用，SECURITY DEFINER 绕过 RLS）
 CREATE OR REPLACE FUNCTION public.fix_missing_profiles()
 RETURNS void AS $$
 BEGIN
@@ -614,12 +748,14 @@ DO $$ BEGIN
         SELECT 1 FROM activity_members am
         WHERE am.activity_id = activity_reviews.activity_id
         AND am.user_id = auth.uid()
+        AND am.status = 'approved'
       )
       AND (
         EXISTS (
           SELECT 1 FROM activity_members am2
           WHERE am2.activity_id = activity_reviews.activity_id
           AND am2.user_id = reviewee_id
+          AND am2.status = 'approved'
         )
         OR EXISTS (
           SELECT 1 FROM activities a2
@@ -644,6 +780,7 @@ DO $$ BEGIN
         SELECT 1 FROM activity_members am3
         WHERE am3.activity_id = activity_reviews.activity_id
         AND am3.user_id = reviewee_id
+        AND am3.status = 'approved'
       )
     );
 EXCEPTION WHEN duplicate_object THEN NULL;

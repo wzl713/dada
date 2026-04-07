@@ -3,9 +3,11 @@ import { supabase } from '../supabaseClient'
 import { useAuth } from '../auth'
 import Avatar from './Avatar'
 import { timeAgo, getUserInfo } from '../utils/helpers'
+import { useToast } from './toast-context'
 
 export default function CommentSection({ activityId, canParticipate }) {
   const { user } = useAuth()
+  const toast = useToast()
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(true)
   const [content, setContent] = useState('')
@@ -55,22 +57,26 @@ export default function CommentSection({ activityId, canParticipate }) {
       content: nextContent,
     })
 
-    if (!error) {
-      const info = await getUserInfo(user.id)
-      setComments((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          user_id: user.id,
-          content: nextContent,
-          created_at: new Date().toISOString(),
-          nickname: info.nickname,
-          avatar_url: info.avatar_url,
-        },
-      ])
-      setContent('')
-      inputRef.current?.focus()
+    if (error) {
+      toast.error(error.message || '发送失败，请确认你已加入活动')
+      setSubmitting(false)
+      return
     }
+
+    const info = await getUserInfo(user.id)
+    setComments((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        content: nextContent,
+        created_at: new Date().toISOString(),
+        nickname: info.nickname,
+        avatar_url: info.avatar_url,
+      },
+    ])
+    setContent('')
+    inputRef.current?.focus()
 
     setSubmitting(false)
   }
@@ -90,7 +96,7 @@ export default function CommentSection({ activityId, canParticipate }) {
 
       {!canParticipate && (
         <div style={{ background: '#f8f7ff', borderRadius: 12, padding: 14, marginBottom: 16, fontSize: 13, color: '#666', lineHeight: 1.6 }}>
-          加入活动后才能进入讨论区，避免聊很久却不见面。
+          申请通过后才能进入讨论区，避免聊很久却不见面。
         </div>
       )}
 
@@ -100,7 +106,7 @@ export default function CommentSection({ activityId, canParticipate }) {
           <input
             ref={inputRef}
             className="input"
-            placeholder={canParticipate ? '说下到达时间、集合点或注意事项...' : '加入后才能发言'}
+            placeholder={canParticipate ? '说下到达时间、集合点或注意事项...' : '申请通过后才能发言'}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             disabled={!canParticipate}

@@ -13,6 +13,21 @@ import { formatTime, getUserInfo } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
 import { getBlockRelationship } from '../utils/safety'
 
+const DEPARTURE_WINDOW_MS = 60 * 60 * 1000
+
+function isDepartureWindowOpen(startTime) {
+  const msUntilStart = new Date(startTime).getTime() - Date.now()
+  return msUntilStart <= DEPARTURE_WINDOW_MS
+}
+
+function getMemberBadge(member, activity) {
+  if (member.status === 'pending') return { text: '待确认', color: '#f59e0b', bg: '#fffbeb' }
+  if (member.status === 'rejected') return { text: '已拒绝', color: '#ef4444', bg: '#fef2f2' }
+  if (member.departureConfirmedAt) return { text: '已确认出发', color: '#22c55e', bg: 'var(--success-bg)' }
+  if (activity && isDepartureWindowOpen(activity.start_time)) return { text: '可能鸽子', color: '#f59e0b', bg: '#fffbeb' }
+  return { text: '已通过', color: '#22c55e', bg: 'var(--success-bg)' }
+}
+
 export default function ActivityDetail() {
   const { id } = useParams()
   const { user } = useAuth()
@@ -21,7 +36,7 @@ export default function ActivityDetail() {
   const [activity, setActivity] = useState(null)
   const [creator, setCreator] = useState(null)
   const [members, setMembers] = useState([])
-  const [isJoined, setIsJoined] = useState(false)
+  const [myMembership, setMyMembership] = useState(null)
   const [loading, setLoading] = useState(true)
   const [blockState, setBlockState] = useState({ blockedByMe: false, blockedMe: false })
 
@@ -39,19 +54,26 @@ export default function ActivityDetail() {
 
       const { data: memberRows } = await supabase
         .from('activity_members')
-        .select('user_id, joined_at')
+        .select('user_id, joined_at, status, approved_at, departure_confirmed_at')
         .eq('activity_id', id)
 
       const memberInfos = await Promise.all(
         (memberRows || []).map(async (item) => {
           const info = await getUserInfo(item.user_id)
-          return { id: item.user_id, ...info, joinedAt: item.joined_at }
+          return {
+            id: item.user_id,
+            ...info,
+            joinedAt: item.joined_at,
+            status: item.status || 'pending',
+            approvedAt: item.approved_at,
+            departureConfirmedAt: item.departure_confirmed_at,
+          }
         })
       )
 
       setActivity(act)
       setMembers(memberInfos)
-      setIsJoined((memberRows || []).some((item) => item.user_id === user.id))
+      setMyMembership((memberRows || []).find((item) => item.user_id === user.id) || null)
 
       if (act.creator_id !== user.id) {
         setBlockState(await getBlockRelationship(user.id, act.creator_id))
@@ -66,18 +88,25 @@ export default function ActivityDetail() {
   async function refreshMembers() {
     const { data: memberRows } = await supabase
       .from('activity_members')
-      .select('user_id, joined_at')
+      .select('user_id, joined_at, status, approved_at, departure_confirmed_at')
       .eq('activity_id', id)
 
     const memberInfos = await Promise.all(
       (memberRows || []).map(async (item) => {
         const info = await getUserInfo(item.user_id)
-        return { id: item.user_id, ...info, joinedAt: item.joined_at }
+        return {
+          id: item.user_id,
+          ...info,
+          joinedAt: item.joined_at,
+          status: item.status || 'pending',
+          approvedAt: item.approved_at,
+          departureConfirmedAt: item.departure_confirmed_at,
+        }
       })
     )
 
     setMembers(memberInfos)
-    setIsJoined((memberRows || []).some((item) => item.user_id === user.id))
+    setMyMembership((memberRows || []).find((item) => item.user_id === user.id) || null)
   }
 
   async function handleJoin() {
@@ -95,8 +124,7 @@ export default function ActivityDetail() {
       return
     }
 
-    setIsJoined(true)
-    toast.success('加入成功，已开放活动内讨论')
+    toast.success('申请已提交，等待发起人确认')
     refreshMembers()
   }
 
@@ -111,7 +139,55 @@ export default function ActivityDetail() {
       return
     }
 
-    setIsJoined(false)
+    setMyMembership(null)
+    refreshMembers()
+  }
+
+  async function handleMemberStatus(memberId, status) {
+    if (status === 'rejected') {
+      const { error } = await supabase
+        .from('activity_members')
+        .delete()
+        .match({ activity_id: id, user_id: memberId })
+
+      if (error) {
+        toast.error(error.message || '处理申请失败')
+        return
+      }
+
+      toast.success('已拒绝该申请')
+      refreshMembers()
+      return
+    }
+
+    const { error } = await supabase
+      .from('activity_members')
+      .update({
+        status,
+        approved_at: status === 'approved' ? new Date().toISOString() : null,
+      })
+      .match({ activity_id: id, user_id: memberId })
+
+    if (error) {
+      toast.error(error.message || '处理申请失败')
+      return
+    }
+
+    toast.success(status === 'approved' ? '已同意对方参加' : '已拒绝该申请')
+    refreshMembers()
+  }
+
+  async function handleConfirmDeparture() {
+    const { error } = await supabase.rpc('confirm_activity_departure', {
+      p_activity_id: id,
+    })
+
+    if (error) {
+      toast.error(error.message || '确认出发失败')
+      return
+    }
+
+    toast.success('已确认出发，发起人会看到你的状态')
     refreshMembers()
   }
 
@@ -189,9 +265,15 @@ export default function ActivityDetail() {
   }
 
   const isCreator = user.id === activity.creator_id
-  const isFull = members.length >= activity.max_members
+  const approvedMembers = members.filter((member) => member.status === 'approved')
+  const pendingMembers = members.filter((member) => member.status === 'pending')
+  const isFull = approvedMembers.length >= activity.max_members
   const isExpired = new Date(activity.start_time) < new Date()
-  const canParticipate = isCreator || isJoined
+  const isApproved = myMembership?.status === 'approved'
+  const isPending = myMembership?.status === 'pending'
+  const canParticipate = isCreator || isApproved
+  const departureWindowOpen = isDepartureWindowOpen(activity.start_time)
+  const canConfirmDeparture = isApproved && !myMembership?.departure_confirmed_at && !isExpired && departureWindowOpen
 
   return (
     <div>
@@ -237,7 +319,7 @@ export default function ActivityDetail() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: '#666', marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>🕐</span><span>{formatTime(activity.start_time)}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📍</span><span>{activity.location}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>👥</span><span>{members.length}/{activity.max_members} 人已参加</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>👥</span><span>{approvedMembers.length}/{activity.max_members} 人已确认参加</span></div>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: activity.description ? 16 : 0 }}>
@@ -291,6 +373,7 @@ export default function ActivityDetail() {
             <div>
               <div style={{ fontWeight: 600, color: '#333', marginBottom: 4 }}>安全提示</div>
               <div>{activity.safety_notice || '建议优先选择公开场所，并提前把行程分享给朋友。'}</div>
+              <div style={{ marginTop: 6, color: 'var(--accent)', fontWeight: 600 }}>建议首次见面选择公共场所。</div>
             </div>
           </div>
 
@@ -302,25 +385,55 @@ export default function ActivityDetail() {
           </div>
         </div>
 
-        {members.length > 0 && (
+        {pendingMembers.length > 0 && isCreator && (
           <div className="card">
             <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              已加入的人 ({members.length})
+              待确认申请 ({pendingMembers.length})
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {members.map((member) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {pendingMembers.map((member) => (
                 <div
                   key={member.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: member.id !== user.id ? 'pointer' : 'default' }}
-                  onClick={() => { if (member.id !== user.id) navigate(`/user/${member.id}`) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10 }}
                 >
                   <Avatar src={member.avatar_url} nickname={member.nickname} size={32} />
-                  <span style={{ fontSize: 13 }}>
-                    {member.nickname}
-                    {member.id === user.id && <span style={{ color: '#bbb', marginLeft: 4 }}>(我)</span>}
-                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{member.nickname}</div>
+                    <div style={{ fontSize: 11, color: '#999' }}>想参加，等待你确认</div>
+                  </div>
+                  <button type="button" className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => handleMemberStatus(member.id, 'rejected')}>拒绝</button>
+                  <button type="button" className="btn-accent" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => handleMemberStatus(member.id, 'approved')}>同意</button>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {approvedMembers.length > 0 && (
+          <div className="card">
+            <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              已确认参加 ({approvedMembers.length})
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {approvedMembers.map((member) => {
+                const badge = getMemberBadge(member, activity)
+                return (
+                  <div
+                    key={member.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: member.id !== user.id ? 'pointer' : 'default' }}
+                    onClick={() => { if (member.id !== user.id) navigate(`/user/${member.id}`) }}
+                  >
+                    <Avatar src={member.avatar_url} nickname={member.nickname} size={32} />
+                    <span style={{ fontSize: 13 }}>
+                      {member.nickname}
+                      {member.id === user.id && <span style={{ color: '#bbb', marginLeft: 4 }}>(我)</span>}
+                    </span>
+                    <span style={{ fontSize: 11, color: badge.color, background: badge.bg, borderRadius: 999, padding: '3px 8px', fontWeight: 600 }}>
+                      {badge.text}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -333,9 +446,9 @@ export default function ActivityDetail() {
           activityId={id}
           activity={activity}
           creator={creator}
-          members={members}
+          members={approvedMembers}
           isCreator={isCreator}
-          isJoined={isJoined}
+          isJoined={isApproved}
           isExpired={isExpired}
         />
 
@@ -346,16 +459,32 @@ export default function ActivityDetail() {
           </div>
         ) : !isExpired && (
           <div style={{ position: 'fixed', bottom: 70, left: 16, right: 16, maxWidth: 448, margin: '0 auto' }}>
-            {isJoined ? (
+            {isApproved ? (
               <div style={{ display: 'flex', gap: 12 }}>
-                <div style={{ flex: 1, padding: 14, background: 'var(--success-bg)', color: 'var(--success)', borderRadius: 12, fontSize: 16, fontWeight: 600, textAlign: 'center' }}>已加入</div>
+                <button
+                  className={canConfirmDeparture ? 'btn-primary' : 'btn-outline'}
+                  style={{ flex: 1 }}
+                  onClick={handleConfirmDeparture}
+                  disabled={!canConfirmDeparture}
+                >
+                  {myMembership?.departure_confirmed_at
+                    ? '已确认出发'
+                    : departureWindowOpen
+                      ? '确认出发'
+                      : '活动前1小时确认'}
+                </button>
                 <button className="btn-outline" style={{ flex: 1 }} onClick={handleLeave}>取消报名</button>
+              </div>
+            ) : isPending ? (
+              <div style={{ display: 'flex', gap: 12 }}>
+                <div style={{ flex: 1, padding: 14, background: '#fffbeb', color: '#f59e0b', borderRadius: 12, fontSize: 16, fontWeight: 600, textAlign: 'center' }}>等待发起人确认</div>
+                <button className="btn-outline" style={{ flex: 1 }} onClick={handleLeave}>取消申请</button>
               </div>
             ) : isFull ? (
               <div style={{ width: '100%', padding: 14, background: '#f5f5f5', color: '#bbb', borderRadius: 12, fontSize: 16, fontWeight: 600, textAlign: 'center' }}>已满员</div>
             ) : (
               <button className="btn-primary" onClick={handleJoin} disabled={blockState.blockedByMe || blockState.blockedMe}>
-                立即加入
+                申请加入
               </button>
             )}
           </div>

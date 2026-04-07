@@ -29,7 +29,7 @@ export default function ActivityList() {
   const { user } = useAuth()
   const toast = useToast()
   const [activities, setActivities] = useState([])
-  const [myJoined, setMyJoined] = useState([])
+  const [myMemberships, setMyMemberships] = useState({})
   const [loading, setLoading] = useState(true)
   const [showFilter, setShowFilter] = useState(false)
   const [keyword, setKeyword] = useState('')
@@ -76,7 +76,7 @@ export default function ActivityList() {
     const [{ data }, blockedIds, joinedRows] = await Promise.all([
       query.order('start_time', { ascending: true }),
       getBlockedUserIds(user.id),
-      supabase.from('activity_members').select('activity_id').eq('user_id', user.id),
+      supabase.from('activity_members').select('activity_id, status').eq('user_id', user.id),
     ])
 
     const blockedSet = new Set(blockedIds)
@@ -93,7 +93,12 @@ export default function ActivityList() {
     })
 
     setActivities(sorted)
-    setMyJoined((joinedRows.data || []).map((item) => item.activity_id))
+    setMyMemberships(
+      (joinedRows.data || []).reduce((acc, item) => {
+        acc[item.activity_id] = item.status || 'pending'
+        return acc
+      }, {})
+    )
     setLoading(false)
   }, [user.id])
 
@@ -152,12 +157,12 @@ export default function ActivityList() {
       .insert({ activity_id: activityId, user_id: user.id })
 
     if (error) {
-      toast.error(error.message || '加入失败')
+      toast.error(error.message || '申请失败')
       return
     }
 
-    toast.success('已加入，活动内讨论已解锁')
-    setMyJoined((prev) => [...prev, activityId])
+    toast.success('已发送申请，等待发起人确认')
+    setMyMemberships((prev) => ({ ...prev, [activityId]: 'pending' }))
     fetchActivities({ keyword, category, timeFilter, location }, { silent: true })
   }
 
@@ -172,7 +177,11 @@ export default function ActivityList() {
       return
     }
 
-    setMyJoined((prev) => prev.filter((id) => id !== activityId))
+    setMyMemberships((prev) => {
+      const next = { ...prev }
+      delete next[activityId]
+      return next
+    })
     fetchActivities({ keyword, category, timeFilter, location }, { silent: true })
   }
 
@@ -367,7 +376,7 @@ export default function ActivityList() {
                 onJoin={handleJoin}
                 onLeave={handleLeave}
                 onDelete={handleDelete}
-                isJoined={myJoined.includes(activity.id)}
+                membershipStatus={myMemberships[activity.id] || null}
                 isFull={activity.member_count >= activity.max_members}
               />
             ))}

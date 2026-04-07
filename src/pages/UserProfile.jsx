@@ -7,7 +7,7 @@ import Avatar from '../components/Avatar'
 import { SkeletonProfile } from '../components/Skeleton'
 import { formatShortTime } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
-import { getReviewSummary } from '../utils/trust'
+import { getReliabilitySummary } from '../utils/trust'
 import { getBlockRelationship } from '../utils/safety'
 
 export default function UserProfile() {
@@ -18,11 +18,16 @@ export default function UserProfile() {
 
   const [profile, setProfile] = useState(null)
   const [activities, setActivities] = useState([])
-  const [reviewSummary, setReviewSummary] = useState({
+  const [reliabilitySummary, setReliabilitySummary] = useState({
     averageRating: 0,
     reviewCount: 0,
     topTags: [],
     positiveRate: 0,
+    reliabilityScore: 0,
+    punctualRate: 0,
+    punctualSampleCount: 0,
+    participatedCount: 0,
+    reportCount: 0,
   })
   const [blockState, setBlockState] = useState({ blockedByMe: false, blockedMe: false })
   const [loading, setLoading] = useState(true)
@@ -45,14 +50,14 @@ export default function UserProfile() {
           .select('id, nickname, avatar_url, school_name, bio')
           .eq('id', userId)
           .single(),
-        getReviewSummary(userId),
+        getReliabilitySummary(userId),
         getBlockRelationship(user.id, userId),
       ])
 
       if (!active) return
 
       setBlockState(relation)
-      setReviewSummary(summary)
+      setReliabilitySummary(summary)
       setProfile({
         id: userId,
         nickname: prof?.nickname || `用户${userId.slice(0, 6)}`,
@@ -169,13 +174,18 @@ export default function UserProfile() {
 
           <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
             {profile.school_name && <span className="tag">🎓 {profile.school_name}</span>}
-            {reviewSummary.reviewCount > 0 && <span className="tag tag-accent">⭐ {reviewSummary.averageRating} 分</span>}
-            {reviewSummary.reviewCount > 0 && <span className="tag tag-success">{reviewSummary.positiveRate}% 好评率</span>}
+            {(reliabilitySummary.participatedCount > 0 || reliabilitySummary.reviewCount > 0) && (
+              <span className="tag tag-accent">⭐ 靠谱度 {reliabilitySummary.reliabilityScore}</span>
+            )}
+            {reliabilitySummary.punctualSampleCount > 0 && (
+              <span className="tag tag-success">守约率 {reliabilitySummary.punctualRate}%</span>
+            )}
+            <span className="tag">已参加 {reliabilitySummary.participatedCount} 次</span>
           </div>
 
-          {!limited && reviewSummary.topTags.length > 0 && (
+          {!limited && reliabilitySummary.topTags.length > 0 && (
             <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-              {reviewSummary.topTags.map((tag) => (
+              {reliabilitySummary.topTags.map((tag) => (
                 <span key={tag} className="tag">{tag}</span>
               ))}
             </div>

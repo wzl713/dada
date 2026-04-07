@@ -2,11 +2,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatTime } from '../utils/helpers'
 
-export default function ActivityCard({ activity, onJoin, onLeave, onDelete, isJoined, isFull }) {
+export default function ActivityCard({ activity, onJoin, onLeave, onDelete, membershipStatus, isFull }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const isCreator = user?.id === activity.creator_id
   const isExpired = new Date(activity.start_time) < new Date()
+  const membershipText = membershipStatus === 'approved' ? '✓ 已通过' : membershipStatus === 'rejected' ? '未通过' : '待确认'
+  const membershipColor = membershipStatus === 'approved' ? '#22c55e' : membershipStatus === 'rejected' ? '#ef4444' : '#f59e0b'
 
   return (
     <div
@@ -92,9 +94,11 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, isJo
             >
               删除
             </button>
-          ) : isJoined ? (
+          ) : membershipStatus ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 600 }}>✓ 已加入</span>
+              <span style={{ fontSize: 13, color: membershipColor, fontWeight: 600 }}>
+                {membershipText}
+              </span>
               <button
                 className="btn-ghost"
                 style={{ padding: '5px 12px', fontSize: 12 }}
@@ -114,7 +118,7 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, isJo
               }}
               onClick={(e) => { e.stopPropagation(); onJoin(activity.id) }}
             >
-              加入
+              申请加入
             </button>
           )}
         </div>
