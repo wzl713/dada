@@ -20,6 +20,7 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
       : activity.creator_credit_level === '低信用'
         ? 'low_credit'
         : 'newbie'
+  const creatorHasReliability = (activity.creator_attended_count || 0) + (activity.creator_no_show_count || 0) > 0
 
   return (
     <div
@@ -94,7 +95,8 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
             发起人：{activity.creator_nickname || '新用户'}
           </span>
           <span className="tag">
-            {activity.creator_credit_level || '新用户'} · 守约率 {Number(activity.creator_completion_rate || 0).toFixed(0)}%
+            {activity.creator_credit_level || '新用户'}
+            {creatorHasReliability ? ` · 守约率 ${Number(activity.creator_completion_rate || 0).toFixed(0)}%` : ''}
           </span>
           <span className="tag">
             已参加 {activity.creator_attended_count || 0} 次

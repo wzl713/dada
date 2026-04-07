@@ -8,7 +8,8 @@ import { SkeletonProfile } from '../components/Skeleton'
 import { formatShortTime } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
 import { getReliabilitySummary } from '../utils/trust'
-import { CreditDuckBadge, DuckMascot, LineIcon } from '../components/DadaIcons'
+import { DuckMascot, LineIcon } from '../components/DadaIcons'
+import ReliabilityPanel from '../components/ReliabilityPanel'
 
 const GENDER_OPTIONS = ['男', '女']
 const BEHAVIOR_LABELS = {
@@ -349,43 +350,7 @@ export default function ProfilePage() {
           )}
         </div>
 
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            我的靠谱度
-          </div>
-          <div style={{ display: 'flex', gap: 20, justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ textAlign: 'center', flex: 1 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)' }}>
-                {reliabilitySummary.participatedCount || reliabilitySummary.reviewCount ? reliabilitySummary.reliabilityScore : '--'}
-              </div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>靠谱度评分</div>
-            </div>
-            <div style={{ textAlign: 'center', flex: 1 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#22c55e' }}>
-                {reliabilitySummary.punctualSampleCount ? `${reliabilitySummary.punctualRate}%` : '--'}
-              </div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>守约率</div>
-            </div>
-            <div style={{ textAlign: 'center', flex: 1 }}>
-              <div style={{ fontSize: 22, fontWeight: 800 }}>{reliabilitySummary.participatedCount}</div>
-              <div style={{ fontSize: 11, color: '#bbb' }}>已参加</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <CreditDuckBadge levelKey={reliabilitySummary.creditLevelKey} label={reliabilitySummary.creditLevelLabel} />
-            <span className="tag">信用分 {reliabilitySummary.creditScore}</span>
-            <span className="tag">信用等级 {profile.credit_level}</span>
-            <span className="tag">守约率 {Number(profile.completion_rate || 0).toFixed(0)}%</span>
-            <span className="tag">放鸽子 {profile.no_show_count || 0} 次</span>
-            {reliabilitySummary.creditLevelKey === 'newbie' && <span className="tag">新人一次只能报 1 个未结束活动</span>}
-            {!reliabilitySummary.canCreateActivity && <span className="tag tag-danger">暂时不能发起活动</span>}
-            {reliabilitySummary.topTags.length > 0 ? (
-              reliabilitySummary.topTags.map((tag) => <span key={tag} className="tag tag-accent">{tag}</span>)
-            ) : (
-              <span style={{ fontSize: 13, color: '#999' }}>活动通过确认和互评后，会慢慢形成你的靠谱度。</span>
-            )}
-          </div>
-        </div>
+        <ReliabilityPanel title="我的靠谱度" summary={reliabilitySummary} profile={profile} />
 
         <div className="card" style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>

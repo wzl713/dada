@@ -116,7 +116,7 @@ function getFallbackCredit(memberRows) {
   )).length
 
   return {
-    credit_score: completedCount,
+    credit_score: 5 + completedCount,
     completed_count: completedCount,
     missed_confirm_count: 0,
     no_show_count: 0,

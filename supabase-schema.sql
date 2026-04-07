@@ -652,7 +652,7 @@ RETURNS TABLE (
   can_create_activity BOOLEAN
 ) AS $$
 DECLARE
-  v_credit_score INTEGER := 0;
+  v_credit_score INTEGER := 5;
   v_completed_count INTEGER := 0;
   v_missed_confirm_count INTEGER := 0;
   v_no_show_count INTEGER := 0;
@@ -698,18 +698,18 @@ BEGIN
   WHERE a.creator_id = p_user_id
     AND a.start_time < now();
 
-  v_credit_score := v_completed_count - v_missed_confirm_count - (v_no_show_count * 2);
+  v_credit_score := 5 + v_completed_count - v_missed_confirm_count - (v_no_show_count * 2);
 
-  IF v_credit_score < 0 THEN
+  IF v_credit_score < 3 THEN
     v_level_key := 'low_credit';
     v_level_label := '🔴 低信用';
   ELSIF v_completed_count <= 2 THEN
     v_level_key := 'newbie';
     v_level_label := '🟢 新人';
-  ELSIF v_hosted_count >= 3 AND v_credit_score >= 6 THEN
+  ELSIF v_hosted_count >= 3 AND v_credit_score >= 8 THEN
     v_level_key := 'quality_creator';
     v_level_label := '🟡 优质发起人';
-  ELSIF v_credit_score >= 6 THEN
+  ELSIF v_credit_score >= 8 THEN
     v_level_key := 'high_credit';
     v_level_label := '🟣 高信用用户';
   ELSE
@@ -726,7 +726,7 @@ BEGIN
     v_active_application_count,
     v_level_key,
     v_level_label,
-    v_credit_score >= 0;
+    v_credit_score >= 3;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 

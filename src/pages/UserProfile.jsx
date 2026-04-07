@@ -10,6 +10,7 @@ import { useToast } from '../components/toast-context'
 import { getReliabilitySummary } from '../utils/trust'
 import { getBlockRelationship } from '../utils/safety'
 import { CreditDuckBadge, DuckMascot, LineIcon } from '../components/DadaIcons'
+import ReliabilityPanel from '../components/ReliabilityPanel'
 
 export default function UserProfile() {
   const { userId } = useParams()
@@ -230,6 +231,10 @@ export default function UserProfile() {
             </div>
           )}
         </div>
+
+        {!limited && (
+          <ReliabilityPanel title="TA 的靠谱度" summary={reliabilitySummary} profile={profile} />
+        )}
 
         <div style={{ fontSize: 11, color: '#bbb', marginBottom: 8, paddingLeft: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           TA 发起的活动

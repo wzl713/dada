@@ -312,6 +312,7 @@ export default function ActivityDetail() {
   const spotsLeft = Math.max((memberLimit || 0) - approvedMembers.length, 0)
   const scarcityText = spotsLeft === 0 ? '名额已满' : spotsLeft <= 2 ? `仅剩 ${spotsLeft} 个名额` : `还差 ${spotsLeft} 人满员`
   const currentStatusText = isCreator ? '我是发起人' : isApproved ? '已通过' : isPending ? '待发起人确认' : '未报名'
+  const creatorHasReliability = (creator?.attended_count || 0) + (creator?.no_show_count || 0) > 0
 
   return (
     <div>
@@ -393,7 +394,10 @@ export default function ActivityDetail() {
                 {creator?.school_name && <span className="tag">{creator.school_name}</span>}
                 {creator?.gender && <span className="tag">性别：{creator.gender}</span>}
                 {creator?.phone_bound && <span className="tag tag-success">已绑定手机号</span>}
-                <span className="tag">{creator?.credit_level || '新用户'} · 守约率 {Number(creator?.completion_rate || 0).toFixed(0)}%</span>
+                <span className="tag">
+                  {creator?.credit_level || '新用户'}
+                  {creatorHasReliability ? ` · 守约率 ${Number(creator?.completion_rate || 0).toFixed(0)}%` : ''}
+                </span>
                 <span className="tag">已参加 {creator?.attended_count || 0} 次</span>
                 <span className="tag tag-success">活动后可互评</span>
               </div>
