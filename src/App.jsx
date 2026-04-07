@@ -15,6 +15,7 @@ import LegalPage from './pages/LegalPage'
 import TabBar from './components/TabBar'
 import InstallPrompt from './components/InstallPrompt'
 import { ToastProvider } from './components/Toast'
+import ComplianceFooter from './components/ComplianceFooter'
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth()
@@ -29,6 +30,7 @@ function AppContent() {
   const [loading, setLoading] = useState(true)
   const location = useLocation()
   const showTabBar = user && TAB_ROUTES.some(r => location.pathname === r || (r !== '/' && location.pathname.startsWith(r)))
+  const showComplianceFooter = user && location.pathname !== '/login'
 
   const ensureProfile = async (user) => {
     if (!user) return
@@ -78,6 +80,7 @@ function AppContent() {
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {showComplianceFooter && <ComplianceFooter />}
       <InstallPrompt />
       {showTabBar && <TabBar />}
     </AuthContext.Provider>
