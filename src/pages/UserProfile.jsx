@@ -9,6 +9,7 @@ import { formatShortTime } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
 import { getReliabilitySummary } from '../utils/trust'
 import { getBlockRelationship } from '../utils/safety'
+import { CreditDuckBadge, DuckMascot, LineIcon } from '../components/DadaIcons'
 
 export default function UserProfile() {
   const { userId } = useParams()
@@ -30,7 +31,7 @@ export default function UserProfile() {
     reportCount: 0,
     creditScore: 0,
     creditLevelKey: 'newbie',
-    creditLevelLabel: '🟢 新人',
+    creditLevelLabel: '新人',
     completedCount: 0,
     missedConfirmCount: 0,
     noShowCount: 0,
@@ -162,7 +163,7 @@ export default function UserProfile() {
       <div>
         <Navbar title="用户主页" showBack />
         <div className="empty-state">
-          <div className="empty-state-icon">🤷</div>
+          <div className="empty-state-icon"><DuckMascot size={64} mood="worried" /></div>
           <div className="empty-state-title">用户不存在</div>
         </div>
       </div>
@@ -182,15 +183,15 @@ export default function UserProfile() {
           {profile.bio && <p style={{ fontSize: 13, color: '#666', lineHeight: 1.6, marginBottom: 10 }}>{profile.bio}</p>}
 
           <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-            {profile.school_name && <span className="tag">🎓 {profile.school_name}</span>}
+            {profile.school_name && <span className="tag">{profile.school_name}</span>}
             {(reliabilitySummary.participatedCount > 0 || reliabilitySummary.reviewCount > 0) && (
-              <span className="tag tag-accent">⭐ 靠谱度 {reliabilitySummary.reliabilityScore}</span>
+              <span className="tag tag-accent">靠谱度 {reliabilitySummary.reliabilityScore}</span>
             )}
             {reliabilitySummary.punctualSampleCount > 0 && (
               <span className="tag tag-success">守约率 {reliabilitySummary.punctualRate}%</span>
             )}
             <span className="tag">已参加 {reliabilitySummary.participatedCount} 次</span>
-            <span className="tag tag-accent">{reliabilitySummary.creditLevelLabel}</span>
+            <CreditDuckBadge levelKey={reliabilitySummary.creditLevelKey} label={reliabilitySummary.creditLevelLabel} />
             <span className="tag">信用分 {reliabilitySummary.creditScore}</span>
           </div>
 
@@ -244,7 +245,7 @@ export default function UserProfile() {
                     {expired && <span className="tag tag-danger" style={{ fontSize: 11, flexShrink: 0, marginLeft: 8 }}>已结束</span>}
                   </div>
                   <div style={{ fontSize: 12, color: '#bbb' }}>
-                    🕐 {formatShortTime(activity.start_time)} · 📍 {activity.location}
+                    <LineIcon name="clock" size={13} /> {formatShortTime(activity.start_time)} · <LineIcon name="location" size={13} /> {activity.location}
                     {activity.gender_requirement && activity.gender_requirement !== '不限' ? ` · ${activity.gender_requirement}` : ''}
                   </div>
                 </div>

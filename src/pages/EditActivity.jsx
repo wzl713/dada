@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient'
 import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
 import { useToast } from '../components/toast-context'
+import { CategoryIcon } from '../components/DadaIcons'
 
 const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
 const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先', '男生优先']
@@ -183,6 +184,9 @@ export default function EditActivity() {
                     padding: '8px 16px',
                     borderRadius: 20,
                     fontSize: 14,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
                     border: form.category === item ? 'none' : '1.5px solid #e8e8e8',
                     background: form.category === item ? 'var(--primary)' : '#fff',
                     color: form.category === item ? '#fff' : '#666',
@@ -190,6 +194,7 @@ export default function EditActivity() {
                     fontFamily: 'inherit',
                   }}
                 >
+                  <CategoryIcon category={item} size={16} />
                   {item}
                 </button>
               ))}

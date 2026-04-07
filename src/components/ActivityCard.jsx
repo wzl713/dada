@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatTime } from '../utils/helpers'
+import { CategoryIcon, LineIcon } from './DadaIcons'
 
 export default function ActivityCard({ activity, onJoin, onLeave, onDelete, membershipStatus, isFull }) {
   const { user } = useAuth()
@@ -62,6 +63,7 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
           </h3>
           {!activity.cover_url && activity.category && activity.category !== '其他' && (
             <span className="tag tag-accent" style={{ flexShrink: 0 }}>
+              <CategoryIcon category={activity.category} size={14} />
               {activity.category}
             </span>
           )}
@@ -72,20 +74,20 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
 
         {/* 信息行 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12, fontSize: 13, color: '#888' }}>
-          <span>🕐 {formatTime(activity.start_time)}</span>
-          <span>📍 {activity.location}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LineIcon name="clock" size={15} /> {formatTime(activity.start_time)}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LineIcon name="location" size={15} /> {activity.location}</span>
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
           {activity.gender_requirement && activity.gender_requirement !== '不限' && (
-            <span className="tag tag-accent">🙋 {activity.gender_requirement}</span>
+            <span className="tag tag-accent"><LineIcon name="user" size={14} /> {activity.gender_requirement}</span>
           )}
         </div>
 
         {/* 底部：人数 + 按钮 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span className="tag">
-            👥 {activity.member_count}/{activity.max_members} 人
+            <LineIcon name="users" size={14} /> {activity.member_count}/{activity.max_members} 人
           </span>
           {!isExpired && (
             <span className={spotsLeft <= 2 ? 'tag tag-accent' : 'tag'}>

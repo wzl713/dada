@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar'
 import { SkeletonMessages } from '../components/Skeleton'
 import { timeAgo, getUserInfo } from '../utils/helpers'
 import Avatar from '../components/Avatar'
+import { DuckMascot, LineIcon } from '../components/DadaIcons'
 
 export default function Notifications() {
   const { user } = useAuth()
@@ -64,15 +65,15 @@ export default function Notifications() {
   function getIcon(type) {
     switch (type) {
       case 'join_activity':
-        return '🆕'
+        return 'users'
       case 'friend_request':
-        return '👋'
+        return 'user'
       case 'friend_accepted':
-        return '🎉'
+        return 'spark'
       case 'new_comment':
-        return '💬'
+        return 'mail'
       default:
-        return '🔔'
+        return 'bell'
     }
   }
 
@@ -91,7 +92,7 @@ export default function Notifications() {
       <div className="container" style={{ paddingTop: 12, paddingBottom: 90 }}>
         {notifications.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">🔔</div>
+            <div className="empty-state-icon"><DuckMascot size={64} mood="sleepy" /></div>
             <div className="empty-state-title">暂无通知</div>
             <div className="empty-state-desc">有人加入、评论或与你互动时，会在这里提醒你。</div>
           </div>
@@ -125,8 +126,8 @@ export default function Notifications() {
                     {fromInfo ? (
                       <Avatar src={fromInfo.avatar_url} nickname={fromInfo.nickname} size={40} />
                     ) : (
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
-                        {getIcon(notification.type)}
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#fff7df', color: '#8b5e24', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
+                        <LineIcon name={getIcon(notification.type)} size={19} />
                       </div>
                     )}
                   </div>

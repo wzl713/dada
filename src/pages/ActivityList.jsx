@@ -6,16 +6,17 @@ import ActivityCard from '../components/ActivityCard'
 import { SkeletonList } from '../components/Skeleton'
 import { useToast } from '../components/toast-context'
 import { getBlockedUserIds } from '../utils/safety'
+import { CategoryIcon, DuckMascot, LineIcon } from '../components/DadaIcons'
 
 const CATEGORIES = [
   { value: '', label: '全部场景' },
-  { value: '电影', label: '🎬 电影' },
-  { value: '吃饭', label: '🍜 吃饭' },
-  { value: '运动', label: '🏸 运动' },
-  { value: '自习', label: '📚 自习' },
-  { value: '徒步', label: '🥾 徒步' },
-  { value: '展览', label: '🖼️ 展览' },
-  { value: '其他', label: '🧩 其他' },
+  { value: '电影', label: '电影' },
+  { value: '吃饭', label: '吃饭' },
+  { value: '运动', label: '运动' },
+  { value: '自习', label: '自习' },
+  { value: '徒步', label: '徒步' },
+  { value: '展览', label: '展览' },
+  { value: '其他', label: '其他' },
 ]
 
 const TIME_FILTERS = [
@@ -208,17 +209,23 @@ export default function ActivityList() {
         <div
           className="card"
           style={{
-            background: 'linear-gradient(135deg, #121826 0%, #243b53 100%)',
-            color: '#fff',
+            background: 'linear-gradient(135deg, #fff7df 0%, #ffeaf0 100%)',
+            color: '#4b3a28',
             marginBottom: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
           }}
         >
-          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}>即时拼局工具</div>
-          <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.25, marginBottom: 8 }}>
-            5分钟内，找到一起出去的人
-          </div>
-          <div style={{ fontSize: 14, lineHeight: 1.6, color: 'rgba(255,255,255,0.78)' }}>
-            不聊很久，直接看附近谁正在组电影、吃饭、运动和周末局。
+          <DuckMascot size={54} mood="proud" style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: 13, opacity: 0.72, marginBottom: 8 }}>即时拼局工具</div>
+            <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.25, marginBottom: 8 }}>
+              5分钟内，找到一起出去的人
+            </div>
+            <div style={{ fontSize: 14, lineHeight: 1.6, color: 'rgba(75,58,40,0.72)' }}>
+              不聊很久，直接看附近谁正在组电影、吃饭、运动和周末局。
+            </div>
           </div>
         </div>
 
@@ -234,7 +241,7 @@ export default function ActivityList() {
                 color: '#ccc',
               }}
             >
-              🔍
+              <LineIcon name="search" size={16} />
             </span>
             <input
               className="input"
@@ -279,6 +286,9 @@ export default function ActivityList() {
                       padding: '6px 14px',
                       borderRadius: 20,
                       fontSize: 13,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
                       border: category === item.value ? 'none' : '1.5px solid #e8e8e8',
                       background: category === item.value ? 'var(--accent)' : '#fff',
                       color: category === item.value ? '#fff' : '#666',
@@ -286,6 +296,7 @@ export default function ActivityList() {
                       fontFamily: 'inherit',
                     }}
                   >
+                    {item.value && <CategoryIcon category={item.value} size={15} />}
                     {item.label}
                   </button>
                 ))}
@@ -356,7 +367,7 @@ export default function ActivityList() {
           <SkeletonList count={4} />
         ) : activities.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">🧭</div>
+            <div className="empty-state-icon"><DuckMascot size={64} mood="sleepy" /></div>
             <div className="empty-state-title">
               {hasFilters ? '暂时没有匹配的搭子局' : '附近还没有新的搭子局'}
             </div>

@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar'
 import { uploadImage, compressImage } from '../utils/upload'
 import { useToast } from '../components/toast-context'
 import { getCreditSummary } from '../utils/trust'
+import { CategoryIcon, DuckMascot, LineIcon } from '../components/DadaIcons'
 
 const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
 const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先', '男生优先']
@@ -55,6 +56,10 @@ const DEFAULT_FORM = {
   gender_requirement: '不限',
   meetup_note: '',
   safety_notice: '建议首次见面选择公共场所。仅限正常线下搭子活动，禁止骚扰、交易和任何越界行为。',
+}
+
+function getCreditLabelText(label) {
+  return (label || '新人').replace(/^[^\u4e00-\u9fa5A-Za-z]+/u, '').trim()
 }
 
 export default function CreateActivity() {
@@ -156,7 +161,7 @@ export default function CreateActivity() {
       <div className="container" style={{ paddingTop: 12, paddingBottom: 90 }}>
         {credit?.level_key === 'low_credit' && (
           <div className="card" style={{ background: '#fff7ed', color: '#c2410c', fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-            你的当前信用等级为 {credit.level_label}，暂时不能发起活动。完成已报名活动、减少爽约记录后会恢复。
+            你的当前信用等级为 {getCreditLabelText(credit.level_label)}，暂时不能发起活动。完成已报名活动、减少爽约记录后会恢复。
           </div>
         )}
 
@@ -176,7 +181,7 @@ export default function CreateActivity() {
           }}
           onClick={() => setShowTemplates((prev) => !prev)}
         >
-          <span style={{ fontSize: 24 }}>⚡</span>
+          <DuckMascot size={36} mood="happy" />
           <div>
             <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--accent)' }}>套一个模板快速发起</div>
             <div style={{ fontSize: 12, color: '#bbb', marginTop: 2 }}>先把活动发出去，再慢慢优化细节。</div>
@@ -201,14 +206,8 @@ export default function CreateActivity() {
                 }}
                 onClick={() => applyTemplate(template)}
               >
-                <span style={{ fontSize: 28 }}>
-                  {template.category === '电影'
-                    ? '🎬'
-                    : template.category === '吃饭'
-                      ? '🍜'
-                      : template.category === '运动'
-                        ? '🏸'
-                        : '📚'}
+                <span style={{ width: 34, height: 34, borderRadius: 12, background: '#fff7df', color: '#8b5e24', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <CategoryIcon category={template.category} size={20} />
                 </span>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{template.title}</div>
@@ -240,7 +239,7 @@ export default function CreateActivity() {
           >
             {!coverPreview && (
               <>
-                <span style={{ fontSize: 32, marginBottom: 8 }}>📷</span>
+                <span style={{ fontSize: 32, marginBottom: 8, color: 'var(--accent)' }}><LineIcon name="camera" size={32} /></span>
                 <span style={{ fontSize: 14, color: '#bbb' }}>添加封面图，可选</span>
               </>
             )}
@@ -338,6 +337,9 @@ export default function CreateActivity() {
                     padding: '8px 16px',
                     borderRadius: 20,
                     fontSize: 14,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
                     border: form.category === item ? 'none' : '1.5px solid #e8e8e8',
                     background: form.category === item ? 'var(--primary)' : '#fff',
                     color: form.category === item ? '#fff' : '#666',
@@ -345,6 +347,7 @@ export default function CreateActivity() {
                     fontFamily: 'inherit',
                   }}
                 >
+                  <CategoryIcon category={item} size={16} />
                   {item}
                 </button>
               ))}

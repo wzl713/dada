@@ -8,6 +8,7 @@ import { SkeletonProfile } from '../components/Skeleton'
 import { formatShortTime } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
 import { getReliabilitySummary } from '../utils/trust'
+import { CreditDuckBadge, DuckMascot, LineIcon } from '../components/DadaIcons'
 
 export default function ProfilePage() {
   const { user } = useAuth()
@@ -34,7 +35,7 @@ export default function ProfilePage() {
     reportCount: 0,
     creditScore: 0,
     creditLevelKey: 'newbie',
-    creditLevelLabel: '🟢 新人',
+    creditLevelLabel: '新人',
     completedCount: 0,
     missedConfirmCount: 0,
     noShowCount: 0,
@@ -181,9 +182,9 @@ export default function ProfilePage() {
 
   const displayActivities = tab === 'published' ? myActivities : joinedActivities
   const verifiedTags = [
-    user.phone ? '📱 手机已验证' : null,
-    user.email_confirmed_at ? '📧 邮箱已验证' : null,
-    profile.school_name ? `🎓 ${profile.school_name}` : null,
+    user.phone ? '手机已验证' : null,
+    user.email_confirmed_at ? '邮箱已验证' : null,
+    profile.school_name ? profile.school_name : null,
   ].filter(Boolean)
 
   return (
@@ -272,7 +273,7 @@ export default function ProfilePage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span className="tag tag-accent">{reliabilitySummary.creditLevelLabel}</span>
+            <CreditDuckBadge levelKey={reliabilitySummary.creditLevelKey} label={reliabilitySummary.creditLevelLabel} />
             <span className="tag">信用分 {reliabilitySummary.creditScore}</span>
             {reliabilitySummary.creditLevelKey === 'newbie' && <span className="tag">新人一次只能报 1 个未结束活动</span>}
             {!reliabilitySummary.canCreateActivity && <span className="tag tag-danger">暂时不能发起活动</span>}
@@ -286,14 +287,14 @@ export default function ProfilePage() {
 
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           {[
-            { icon: '🔔', label: '通知', path: '/notifications' },
-            { icon: '📝', label: '发布活动', path: '/create' },
-            { icon: '📄', label: '用户协议', path: '/legal/terms' },
-            { icon: '🔒', label: '隐私政策', path: '/legal/privacy' },
+            { icon: 'bell', label: '通知', path: '/notifications' },
+            { icon: 'plus', label: '发布活动', path: '/create' },
+            { icon: 'tag', label: '用户协议', path: '/legal/terms' },
+            { icon: 'link', label: '隐私政策', path: '/legal/privacy' },
           ].map((item) => (
             <div key={item.path} className="profile-menu-item" onClick={() => navigate(item.path)}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span>{item.icon}</span>
+                <LineIcon name={item.icon} size={17} />
                 <span>{item.label}</span>
               </span>
               <span style={{ color: '#ddd' }}>›</span>
@@ -324,7 +325,7 @@ export default function ProfilePage() {
           </div>
           {displayActivities.length === 0 ? (
             <div className="empty-state" style={{ padding: 32 }}>
-              <div className="empty-state-icon" style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
+              <div className="empty-state-icon" style={{ marginBottom: 8 }}><DuckMascot size={52} mood="sleepy" /></div>
               <div className="empty-state-desc">{tab === 'published' ? '还没有发起活动' : '还没有参加活动'}</div>
             </div>
           ) : (
@@ -337,7 +338,7 @@ export default function ProfilePage() {
                     {expired && <span className="tag tag-danger" style={{ fontSize: 11, flexShrink: 0, marginLeft: 8 }}>已结束</span>}
                   </div>
                   <div style={{ fontSize: 12, color: '#bbb' }}>
-                    🕐 {formatShortTime(activity.start_time)} · 📍 {activity.location}
+                    <LineIcon name="clock" size={13} /> {formatShortTime(activity.start_time)} · <LineIcon name="location" size={13} /> {activity.location}
                     {activity.gender_requirement && activity.gender_requirement !== '不限' ? ` · ${activity.gender_requirement}` : ''}
                   </div>
                 </div>

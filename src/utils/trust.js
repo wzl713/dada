@@ -123,7 +123,7 @@ function getFallbackCredit(memberRows) {
     hosted_count: 0,
     active_application_count: 0,
     level_key: completedCount <= 2 ? 'newbie' : 'regular',
-    level_label: completedCount <= 2 ? '🟢 新人' : '🔵 普通用户',
+    level_label: completedCount <= 2 ? '新人' : '普通用户',
     can_create_activity: true,
   }
 }

@@ -13,6 +13,7 @@ import { formatTime, getUserInfo } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
 import { getBlockRelationship } from '../utils/safety'
 import { getCreditSummary } from '../utils/trust'
+import { CategoryIcon, CreditDuckBadge, DuckMascot, LineIcon } from '../components/DadaIcons'
 
 const DEPARTURE_WINDOW_MS = 60 * 60 * 1000
 
@@ -281,7 +282,7 @@ export default function ActivityDetail() {
       <div>
         <Navbar title="活动详情" showBack />
         <div className="empty-state">
-          <div className="empty-state-icon">🤷</div>
+          <div className="empty-state-icon"><DuckMascot size={64} mood="worried" /></div>
           <div className="empty-state-title">活动不存在</div>
           <div className="empty-state-desc">该活动可能已被删除</div>
         </div>
@@ -345,21 +346,24 @@ export default function ActivityDetail() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, gap: 10 }}>
             <h2 style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.4, flex: 1 }}>{activity.title}</h2>
             {activity.category && activity.category !== '其他' && (
-              <span className="tag tag-accent" style={{ flexShrink: 0 }}>{activity.category}</span>
+              <span className="tag tag-accent" style={{ flexShrink: 0 }}>
+                <CategoryIcon category={activity.category} size={14} />
+                {activity.category}
+              </span>
             )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: '#666', marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>🕐</span><span>{formatTime(activity.start_time)}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📍</span><span>{activity.location}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>👥</span><span>{approvedMembers.length}/{activity.max_members} 人已确认参加 · {scarcityText}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="clock" size={16} /><span>{formatTime(activity.start_time)}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="location" size={16} /><span>{activity.location}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="users" size={16} /><span>{approvedMembers.length}/{activity.max_members} 人已确认参加 · {scarcityText}</span></div>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: activity.description ? 16 : 0 }}>
             {activity.gender_requirement && activity.gender_requirement !== '不限' && (
-              <span className="tag tag-accent">🙋 {activity.gender_requirement}</span>
+              <span className="tag tag-accent"><LineIcon name="user" size={14} /> {activity.gender_requirement}</span>
             )}
-            <span className="tag">⚡ 不聊天太久，优先直接见面</span>
+            <span className="tag"><LineIcon name="spark" size={14} /> 不聊天太久，优先直接见面</span>
             <span className="tag tag-success">{scarcityText}</span>
           </div>
 
@@ -380,8 +384,8 @@ export default function ActivityDetail() {
                 {isCreator && <span style={{ fontSize: 12, color: '#bbb', marginLeft: 8 }}>(我)</span>}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                {creator?.school_name && <span className="tag">🎓 {creator.school_name}</span>}
-                <span className="tag tag-success">✅ 活动后可互评</span>
+                {creator?.school_name && <span className="tag">{creator.school_name}</span>}
+                <span className="tag tag-success">活动后可互评</span>
               </div>
             </div>
             {!isCreator && <span style={{ color: '#ddd', fontSize: 18 }}>›</span>}
@@ -434,7 +438,7 @@ export default function ActivityDetail() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{member.nickname}</div>
                     <div style={{ fontSize: 11, color: '#999' }}>
-                      {member.credit?.level_label || '🟢 新人'} · 想参加，等待你确认
+                      <CreditDuckBadge levelKey={member.credit?.level_key} label={member.credit?.level_label} compact /> · 想参加，等待你确认
                     </div>
                     {['high_credit', 'quality_creator'].includes(member.credit?.level_key) && (
                       <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginTop: 2 }}>高信用用户，建议优先通过</div>
@@ -470,7 +474,7 @@ export default function ActivityDetail() {
                     <span style={{ fontSize: 11, color: badge.color, background: badge.bg, borderRadius: 999, padding: '3px 8px', fontWeight: 600 }}>
                       {badge.text}
                     </span>
-                    <span style={{ fontSize: 11, color: '#999' }}>{member.credit?.level_label}</span>
+                    <CreditDuckBadge levelKey={member.credit?.level_key} label={member.credit?.level_label} compact />
                     {isCreator && isExpired && !member.noShowMarkedAt && (
                       <button
                         type="button"

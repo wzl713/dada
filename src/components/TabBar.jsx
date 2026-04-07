@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
+import { DuckMascot, LineIcon } from './DadaIcons'
 
 export default function TabBar() {
   const { user } = useAuth()
@@ -25,10 +26,10 @@ export default function TabBar() {
   }, [user])
 
   const tabs = [
-    { path: '/', icon: '🏠', label: '首页' },
-    { path: '/notifications', icon: '🔔', label: '通知', badge: unreadNotifications },
-    { path: '/create', icon: '➕', label: '发布', isCenter: true },
-    { path: '/profile', icon: '👤', label: '我的' },
+    { path: '/', icon: 'home', label: '首页' },
+    { path: '/notifications', icon: 'bell', label: '通知', badge: unreadNotifications },
+    { path: '/create', icon: 'plus', label: '发布', isCenter: true },
+    { path: '/profile', icon: 'user', label: '我的' },
   ]
 
   const isActive = (path) => {
@@ -48,11 +49,12 @@ export default function TabBar() {
           >
             <div style={{
               width: 44, height: 44, borderRadius: '50%',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: 'linear-gradient(135deg, #ffe8a3 0%, #ffd1dc 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(102, 126, 234, 0.4)',
+              boxShadow: '0 6px 14px rgba(245, 177, 66, 0.28)',
+              color: '#5b4630',
             }}>
-              <span style={{ fontSize: 22, color: '#fff' }}>{tab.icon}</span>
+              <DuckMascot size={30} mood="happy" />
             </div>
             <span style={{ fontSize: 10, marginTop: 2, color: '#888' }}>{tab.label}</span>
           </button>
@@ -62,7 +64,7 @@ export default function TabBar() {
             className={`tab-bar-item${isActive(tab.path) ? ' active' : ''}`}
             onClick={() => navigate(tab.path)}
           >
-            <span className="tab-bar-icon">{tab.icon}</span>
+            <span className="tab-bar-icon"><LineIcon name={tab.icon} size={22} /></span>
             <span>{tab.label}</span>
             {tab.badge > 0 && (
               <span className="tab-bar-badge">

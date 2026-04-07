@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { Link, useNavigate } from 'react-router-dom'
 import { useToast } from '../components/toast-context'
+import { DuckMascot, LineIcon } from '../components/DadaIcons'
 
 export default function LoginPage() {
   const [mode, setMode] = useState('email')
@@ -71,18 +72,18 @@ export default function LoginPage() {
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       justifyContent: 'center', alignItems: 'center', padding: '24px',
-      background: 'linear-gradient(180deg, #f5f3ff 0%, #f5f5f5 100%)',
+      background: 'linear-gradient(180deg, #fff8e7 0%, #fff2f5 52%, #fff 100%)',
     }}>
       <div style={{ width: '100%', maxWidth: 400 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
           <div style={{
             width: 72, height: 72, borderRadius: 20, margin: '0 auto 16px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            background: 'linear-gradient(135deg, #fff3bf 0%, #ffd6df 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 8px 24px rgba(102, 126, 234, 0.3)',
+            boxShadow: '0 10px 26px rgba(245, 177, 66, 0.24)',
           }}>
-            <span style={{ fontSize: 36 }}>🎯</span>
+            <DuckMascot size={54} mood="happy" />
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.5px' }}>搭搭 Dada</h1>
           <p style={{ color: '#aaa', marginTop: 6, fontSize: 14, fontWeight: 500 }}>快速找到一起做事的人</p>
@@ -103,7 +104,10 @@ export default function LoginPage() {
               }}
               onClick={() => { setMode(m); setMessage('') }}
             >
-              {m === 'email' ? '📧 邮箱登录' : '📱 手机号登录'}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <LineIcon name={m === 'email' ? 'mail' : 'phone'} size={16} />
+                {m === 'email' ? '邮箱登录' : '手机号登录'}
+              </span>
             </button>
           ))}
         </div>
@@ -181,7 +185,7 @@ export default function LoginPage() {
           fontSize: 15, fontWeight: 600, cursor: 'pointer', background: '#fff',
           transition: 'all 0.2s ease', fontFamily: 'inherit', color: '#333',
         }} onClick={handleWechatLogin} disabled={loading}>
-          <span style={{ fontSize: 20 }}>💚</span>
+          <span style={{ fontSize: 20, color: '#22c55e' }}>●</span>
           微信登录
         </button>
 

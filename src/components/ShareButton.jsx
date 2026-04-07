@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useToast } from './toast-context'
+import { LineIcon } from './DadaIcons'
 
 export default function ShareButton({ activity, label = '分享' }) {
   const toast = useToast()
@@ -48,7 +49,7 @@ export default function ShareButton({ activity, label = '分享' }) {
         style={{ display: 'flex', alignItems: 'center', gap: 6 }}
         onClick={() => setShowMenu((prev) => !prev)}
       >
-        📤 {label}
+        <LineIcon name="link" size={14} /> {label}
       </button>
 
       {showMenu && (
@@ -87,7 +88,7 @@ export default function ShareButton({ activity, label = '分享' }) {
                 }}
                 onClick={handleNativeShare}
               >
-                <span>📱</span> 分享到...
+                <LineIcon name="phone" size={15} /> 分享到...
               </button>
             )}
             <button
@@ -108,7 +109,7 @@ export default function ShareButton({ activity, label = '分享' }) {
               }}
               onClick={handleCopyLink}
             >
-              <span>🔗</span> 复制链接
+              <LineIcon name="link" size={15} /> 复制链接
             </button>
           </div>
         </>

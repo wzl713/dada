@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
 
 * {
   box-sizing: border-box;
@@ -8,22 +8,22 @@
 }
 
 :root {
-  --primary: #1a1a1a;
-  --primary-light: #333;
-  --accent: #667eea;
-  --accent-bg: #f0edff;
+  --primary: #3f3426;
+  --primary-light: #5b4630;
+  --accent: #e8a93a;
+  --accent-bg: #fff4cf;
   --success: #22c55e;
   --success-bg: #f0fdf4;
   --danger: #ef4444;
   --danger-bg: #fef2f2;
-  --warning: #f59e0b;
+  --warning: #f6b84b;
   --text-primary: #1a1a1a;
   --text-secondary: #555;
   --text-muted: #888;
   --text-placeholder: #bbb;
-  --border: #e8e8e8;
-  --border-light: #f0f0f0;
-  --bg-page: #f5f5f5;
+  --border: #f0e4d2;
+  --border-light: #f7efe3;
+  --bg-page: #fffaf1;
   --bg-card: #fff;
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -36,7 +36,7 @@
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg-page);
   color: var(--text-primary);
   min-height: 100vh;
@@ -186,6 +186,31 @@ textarea.input {
   color: var(--success);
 }
 
+.credit-duck-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  background: #fff4cf;
+  color: #7c5522;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.credit-duck-badge-low_credit {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.credit-duck-badge-high_credit,
+.credit-duck-badge-quality_creator {
+  background: #fff0f5;
+  color: #be5f78;
+}
+
 /* 导航栏 */
 .navbar {
   position: sticky;
@@ -204,7 +229,7 @@ textarea.input {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f6b84b 0%, #ff9eb3 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -214,7 +239,7 @@ textarea.input {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f6b84b 0%, #ff9eb3 100%);
   color: #fff;
   border: 2px solid #fff;
   box-shadow: var(--shadow-sm);
