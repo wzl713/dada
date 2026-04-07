@@ -38,18 +38,25 @@ export function formatShortTime(t) {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
 }
 
-// 获取用户信息（昵称 + 头像）
+// 获取用户信息（昵称 + 头像 + 基础资料）
 import { supabase } from '../supabaseClient'
 
 export async function getUserInfo(userId) {
   const { data } = await supabase
     .from('profiles')
-    .select('nickname, avatar_url, school_name')
+    .select('nickname, avatar_url, school_name, gender, phone_bound, trust_badge, attended_count, no_show_count, completion_rate, credit_level')
     .eq('id', userId)
     .single()
   return {
     nickname: data?.nickname || ('用户' + userId.slice(0, 6)),
     avatar_url: data?.avatar_url || '',
     school_name: data?.school_name || '',
+    gender: data?.gender || '',
+    phone_bound: Boolean(data?.phone_bound),
+    trust_badge: data?.trust_badge || '',
+    attended_count: data?.attended_count || 0,
+    no_show_count: data?.no_show_count || 0,
+    completion_rate: data?.completion_rate || 0,
+    credit_level: data?.credit_level || '新用户',
   }
 }

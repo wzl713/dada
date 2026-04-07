@@ -57,7 +57,7 @@ export default function UserProfile() {
       const [{ data: prof }, summary, relation] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, nickname, avatar_url, school_name, bio')
+          .select('id, nickname, avatar_url, school_name, gender, bio, phone_bound, trust_badge, attended_count, completion_rate, credit_level')
           .eq('id', userId)
           .single(),
         getReliabilitySummary(userId),
@@ -73,7 +73,13 @@ export default function UserProfile() {
         nickname: prof?.nickname || `用户${userId.slice(0, 6)}`,
         avatar_url: prof?.avatar_url || '',
         school_name: prof?.school_name || '',
+        gender: prof?.gender || '',
         bio: prof?.bio || '',
+        phone_bound: Boolean(prof?.phone_bound),
+        trust_badge: prof?.trust_badge || '',
+        attended_count: prof?.attended_count || 0,
+        completion_rate: prof?.completion_rate || 0,
+        credit_level: prof?.credit_level || '新用户',
       })
 
       if (!relation.blockedByMe && !relation.blockedMe) {
@@ -133,11 +139,13 @@ export default function UserProfile() {
   async function handleReport() {
     const reason = window.prompt('请填写举报该用户的原因')
     if (!reason?.trim()) return
+    const description = window.prompt('可选：补充具体情况，方便后续追溯。', '') || ''
 
     const { error } = await supabase.from('user_reports').insert({
       reporter_id: user.id,
       reported_user_id: userId,
       reason: reason.trim(),
+      description: description.trim(),
       report_type: 'user',
     })
 
@@ -184,6 +192,8 @@ export default function UserProfile() {
 
           <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
             {profile.school_name && <span className="tag">{profile.school_name}</span>}
+            {profile.gender && <span className="tag">性别：{profile.gender}</span>}
+            {profile.phone_bound && <span className="tag tag-success">已绑定手机号</span>}
             {(reliabilitySummary.participatedCount > 0 || reliabilitySummary.reviewCount > 0) && (
               <span className="tag tag-accent">靠谱度 {reliabilitySummary.reliabilityScore}</span>
             )}

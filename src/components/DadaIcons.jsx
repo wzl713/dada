@@ -78,6 +78,12 @@ export function LineIcon({ name, size = 18, style }) {
     gallery: (
       <svg {...common}><path {...strokeProps} d="M5 5h14v14H5z" /><path {...strokeProps} d="m7 16 3.5-4 2.5 3 2-2.2 2 3.2" /><circle {...strokeProps} cx="15.5" cy="8.5" r="1" /></svg>
     ),
+    escape: (
+      <svg {...common}><path {...strokeProps} d="M7 4h10v16H7z" /><path {...strokeProps} d="M10 12h5" /><path {...strokeProps} d="m13 9 3 3-3 3" /><circle {...strokeProps} cx="9.5" cy="12" r=".5" /></svg>
+    ),
+    script: (
+      <svg {...common}><path {...strokeProps} d="M7 4h8l3 3v13H7z" /><path {...strokeProps} d="M15 4v4h4M10 11h5M10 15h6" /><path {...strokeProps} d="M9 19c2-1.6 4-1.6 6 0" /></svg>
+    ),
     link: (
       <svg {...common}><path {...strokeProps} d="M10 13a4 4 0 0 0 5.7 0l2-2a4 4 0 0 0-5.7-5.7l-1 1" /><path {...strokeProps} d="M14 11a4 4 0 0 0-5.7 0l-2 2A4 4 0 0 0 12 18.7l1-1" /></svg>
     ),
@@ -125,6 +131,8 @@ export function CategoryIcon({ category, size = 18 }) {
     自习: 'book',
     徒步: 'hike',
     展览: 'gallery',
+    密室: 'escape',
+    剧本杀: 'script',
     其他: 'tag',
   }
 

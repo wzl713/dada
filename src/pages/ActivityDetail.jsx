@@ -250,10 +250,12 @@ export default function ActivityDetail() {
   async function handleReport(type) {
     const reason = window.prompt(type === 'activity' ? '请填写举报该活动的原因' : '请填写举报该用户的原因')
     if (!reason?.trim()) return
+    const description = window.prompt('可选：补充具体情况，方便后续追溯。', '') || ''
 
     const payload = {
       reporter_id: user.id,
       reason: reason.trim(),
+      description: description.trim(),
       report_type: type,
       activity_id: type === 'activity' ? id : null,
       reported_user_id: type === 'user' ? creator?.id || null : null,
@@ -299,15 +301,17 @@ export default function ActivityDetail() {
       const bPriority = ['high_credit', 'quality_creator'].includes(b.credit?.level_key) ? 1 : 0
       return bPriority - aPriority
     })
-  const isFull = approvedMembers.length >= activity.max_members
+  const memberLimit = activity.participant_limit || activity.max_members
+  const isFull = approvedMembers.length >= memberLimit
   const isExpired = new Date(activity.start_time) < new Date()
   const isApproved = myMembership?.status === 'approved'
   const isPending = myMembership?.status === 'pending'
   const canParticipate = isCreator || isApproved
   const departureWindowOpen = isDepartureWindowOpen(activity.start_time)
   const canConfirmDeparture = isApproved && !myMembership?.departure_confirmed_at && !isExpired && departureWindowOpen
-  const spotsLeft = Math.max((activity.max_members || 0) - approvedMembers.length, 0)
+  const spotsLeft = Math.max((memberLimit || 0) - approvedMembers.length, 0)
   const scarcityText = spotsLeft === 0 ? '名额已满' : spotsLeft <= 2 ? `仅剩 ${spotsLeft} 个名额` : `还差 ${spotsLeft} 人满员`
+  const currentStatusText = isCreator ? '我是发起人' : isApproved ? '已通过' : isPending ? '待发起人确认' : '未报名'
 
   return (
     <div>
@@ -356,7 +360,8 @@ export default function ActivityDetail() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: '#666', marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="clock" size={16} /><span>{formatTime(activity.start_time)}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="location" size={16} /><span>{activity.location}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="users" size={16} /><span>{approvedMembers.length}/{activity.max_members} 人已确认参加 · {scarcityText}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="users" size={16} /><span>{approvedMembers.length}/{memberLimit} 人已确认参加 · {scarcityText}</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><LineIcon name="tag" size={16} /><span>费用方式：{activity.cost_type || 'AA'}</span></div>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: activity.description ? 16 : 0 }}>
@@ -365,6 +370,7 @@ export default function ActivityDetail() {
             )}
             <span className="tag"><LineIcon name="spark" size={14} /> 不聊天太久，优先直接见面</span>
             <span className="tag tag-success">{scarcityText}</span>
+            {activity.public_place_confirm && <span className="tag tag-success">已确认公共场所</span>}
           </div>
 
           {activity.description && (
@@ -385,6 +391,10 @@ export default function ActivityDetail() {
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                 {creator?.school_name && <span className="tag">{creator.school_name}</span>}
+                {creator?.gender && <span className="tag">性别：{creator.gender}</span>}
+                {creator?.phone_bound && <span className="tag tag-success">已绑定手机号</span>}
+                <span className="tag">{creator?.credit_level || '新用户'} · 守约率 {Number(creator?.completion_rate || 0).toFixed(0)}%</span>
+                <span className="tag">已参加 {creator?.attended_count || 0} 次</span>
                 <span className="tag tag-success">活动后可互评</span>
               </div>
             </div>
@@ -405,18 +415,19 @@ export default function ActivityDetail() {
           <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>集合与安全</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 14, color: '#666', lineHeight: 1.7 }}>
             <div>
-              <div style={{ fontWeight: 600, color: '#333', marginBottom: 4 }}>集合方式</div>
-              <div>{activity.meetup_note || '发起人暂未补充集合说明，建议进活动后尽快确认。'}</div>
+              <div style={{ fontWeight: 600, color: '#333', marginBottom: 4 }}>见面点说明</div>
+              <div>{activity.meeting_place_detail || activity.meetup_note || '发起人暂未补充集合说明，建议进活动后尽快确认。'}</div>
             </div>
             <div>
               <div style={{ fontWeight: 600, color: '#333', marginBottom: 4 }}>安全提示</div>
-              <div>{activity.safety_notice || '建议优先选择公开场所，并提前把行程分享给朋友。'}</div>
-              <div style={{ marginTop: 6, color: 'var(--accent)', fontWeight: 600 }}>建议首次见面选择公共场所。</div>
+              <div>{activity.safety_note || activity.safety_notice || '建议优先选择公开场所，并提前告知朋友行程。'}</div>
+              <div style={{ marginTop: 6, color: 'var(--accent)', fontWeight: 600 }}>建议首次见面选择公共场所，并提前告知朋友行程。</div>
+              <div style={{ marginTop: 6 }}>请勿向陌生人透露手机号等隐私信息。平台仅提供信息撮合服务，不对线下个人行为承担担保责任。</div>
             </div>
           </div>
 
           <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ShareButton activity={activity} label="分享行程" />
+            <ShareButton activity={activity} creator={creator} statusText={currentStatusText} label="分享给朋友" />
             {!isCreator && (
               <button type="button" className="btn-ghost" onClick={() => handleReport('activity')}>举报活动</button>
             )}
@@ -438,7 +449,7 @@ export default function ActivityDetail() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{member.nickname}</div>
                     <div style={{ fontSize: 11, color: '#999' }}>
-                      <CreditDuckBadge levelKey={member.credit?.level_key} label={member.credit?.level_label} compact /> · 想参加，等待你确认
+                      <CreditDuckBadge levelKey={member.credit?.level_key} label={member.credit?.level_label} compact /> · {member.gender ? `性别：${member.gender} · ` : ''}想参加，等待你确认
                     </div>
                     {['high_credit', 'quality_creator'].includes(member.credit?.level_key) && (
                       <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginTop: 2 }}>高信用用户，建议优先通过</div>
@@ -475,6 +486,7 @@ export default function ActivityDetail() {
                       {badge.text}
                     </span>
                     <CreditDuckBadge levelKey={member.credit?.level_key} label={member.credit?.level_label} compact />
+                    {member.gender && <span className="tag">性别：{member.gender}</span>}
                     {isCreator && isExpired && !member.noShowMarkedAt && (
                       <button
                         type="button"

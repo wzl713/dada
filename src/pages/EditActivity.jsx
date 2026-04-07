@@ -6,8 +6,9 @@ import Navbar from '../components/Navbar'
 import { useToast } from '../components/toast-context'
 import { CategoryIcon } from '../components/DadaIcons'
 
-const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
+const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '密室', '剧本杀', '其他']
 const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先', '男生优先']
+const COST_OPTIONS = ['AA', '免费', '我请客', '对方请客', '待定']
 
 export default function EditActivity() {
   const { id } = useParams()
@@ -20,9 +21,14 @@ export default function EditActivity() {
     location: '',
     start_time: '',
     max_members: 2,
+    participant_limit: 2,
     category: '',
     gender_requirement: '不限',
+    meeting_place_detail: '',
+    public_place_confirm: false,
+    cost_type: 'AA',
     meetup_note: '',
+    safety_note: '',
     safety_notice: '',
   })
   const [loading, setLoading] = useState(true)
@@ -53,9 +59,14 @@ export default function EditActivity() {
         location: data.location || '',
         start_time: localISO,
         max_members: data.max_members || 2,
+        participant_limit: data.participant_limit || data.max_members || 2,
         category: data.category || '',
         gender_requirement: data.gender_requirement || '不限',
+        meeting_place_detail: data.meeting_place_detail || data.meetup_note || '',
+        public_place_confirm: Boolean(data.public_place_confirm),
+        cost_type: data.cost_type || 'AA',
         meetup_note: data.meetup_note || '',
+        safety_note: data.safety_note || data.safety_notice || '',
         safety_notice: data.safety_notice || '',
       })
       setLoading(false)
@@ -76,6 +87,16 @@ export default function EditActivity() {
       return
     }
 
+    if (!form.location.trim() || !form.meeting_place_detail.trim()) {
+      toast.error('请填写明确地点和见面点说明')
+      return
+    }
+
+    if (!form.public_place_confirm) {
+      toast.error('请先确认首次见面选择公共场所')
+      return
+    }
+
     setSaving(true)
 
     const { error } = await supabase
@@ -85,11 +106,16 @@ export default function EditActivity() {
         description: form.description,
         location: form.location,
         start_time: new Date(form.start_time).toISOString(),
-        max_members: form.max_members,
+        max_members: form.participant_limit,
+        participant_limit: form.participant_limit,
         category: form.category,
         gender_requirement: form.gender_requirement || '不限',
-        meetup_note: form.meetup_note,
-        safety_notice: form.safety_notice,
+        meeting_place_detail: form.meeting_place_detail,
+        public_place_confirm: form.public_place_confirm,
+        cost_type: form.cost_type,
+        meetup_note: form.meeting_place_detail,
+        safety_note: form.safety_note,
+        safety_notice: form.safety_note,
       })
       .eq('id', id)
 
@@ -161,8 +187,12 @@ export default function EditActivity() {
               type="number"
               min="2"
               max="6"
-              value={form.max_members}
-              onChange={(e) => update('max_members', parseInt(e.target.value, 10) || 2)}
+              value={form.participant_limit}
+              onChange={(e) => {
+                const nextLimit = parseInt(e.target.value, 10) || 2
+                update('max_members', nextLimit)
+                update('participant_limit', nextLimit)
+              }}
               required
             />
           </div>
@@ -229,18 +259,55 @@ export default function EditActivity() {
           <textarea
             className="input"
             rows={3}
-            placeholder="集合方式 / AA / 注意事项"
-            value={form.meetup_note}
-            onChange={(e) => update('meetup_note', e.target.value)}
+            placeholder="见面点说明（必填）：例如大悦城 5 楼影院门口、店门口前台旁"
+            value={form.meeting_place_detail}
+            onChange={(e) => {
+              update('meeting_place_detail', e.target.value)
+              update('meetup_note', e.target.value)
+            }}
+            required
           />
+
+          <div>
+            <label style={{ fontSize: 14, color: '#666', marginBottom: 8, display: 'block' }}>费用方式</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {COST_OPTIONS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => update('cost_type', item)}
+                  className={form.cost_type === item ? 'btn-accent' : 'btn-ghost'}
+                  style={{ padding: '8px 14px', fontSize: 13 }}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <textarea
             className="input"
             rows={3}
             placeholder="安全提示"
-            value={form.safety_notice}
-            onChange={(e) => update('safety_notice', e.target.value)}
+            value={form.safety_note}
+            onChange={(e) => {
+              update('safety_note', e.target.value)
+              update('safety_notice', e.target.value)
+            }}
           />
+
+          <label className="card" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', background: '#fffaf0' }}>
+            <input
+              type="checkbox"
+              checked={form.public_place_confirm}
+              onChange={(e) => update('public_place_confirm', e.target.checked)}
+              style={{ marginTop: 3 }}
+              required
+            />
+            <span style={{ fontSize: 13, lineHeight: 1.6, color: '#8b5e24' }}>
+              我确认本次活动建议首次见面选择公共场所，并已提醒参与者提前告知朋友行程。平台仅提供信息撮合服务。
+            </span>
+          </label>
 
           <button className="btn-primary" type="submit" disabled={saving} style={{ marginTop: 8 }}>
             {saving ? '保存中...' : '保存修改'}

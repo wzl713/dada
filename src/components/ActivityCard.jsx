@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatTime } from '../utils/helpers'
-import { CategoryIcon, LineIcon } from './DadaIcons'
+import { CategoryIcon, CreditDuckBadge, LineIcon } from './DadaIcons'
 
 export default function ActivityCard({ activity, onJoin, onLeave, onDelete, membershipStatus, isFull }) {
   const { user } = useAuth()
@@ -10,8 +10,16 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
   const isExpired = new Date(activity.start_time) < new Date()
   const membershipText = membershipStatus === 'approved' ? '✓ 已通过' : membershipStatus === 'rejected' ? '未通过' : '待确认'
   const membershipColor = membershipStatus === 'approved' ? '#22c55e' : membershipStatus === 'rejected' ? '#ef4444' : '#f59e0b'
-  const spotsLeft = Math.max((activity.max_members || 0) - (activity.member_count || 0), 0)
+  const memberLimit = activity.display_member_limit || activity.participant_limit || activity.max_members || 0
+  const spotsLeft = Math.max(memberLimit - (activity.member_count || 0), 0)
   const scarcityText = spotsLeft === 0 ? '名额已满' : spotsLeft <= 2 ? `仅剩 ${spotsLeft} 个名额` : `还差 ${spotsLeft} 人满员`
+  const creatorCreditKey = activity.creator_credit_level === '高信用用户'
+    ? 'high_credit'
+    : activity.creator_credit_level === '普通用户'
+      ? 'regular'
+      : activity.creator_credit_level === '低信用'
+        ? 'low_credit'
+        : 'newbie'
 
   return (
     <div
@@ -82,13 +90,26 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
           {activity.gender_requirement && activity.gender_requirement !== '不限' && (
             <span className="tag tag-accent"><LineIcon name="user" size={14} /> {activity.gender_requirement}</span>
           )}
+          <span className="tag">
+            发起人：{activity.creator_nickname || '新用户'}
+          </span>
+          <span className="tag">
+            {activity.creator_credit_level || '新用户'} · 守约率 {Number(activity.creator_completion_rate || 0).toFixed(0)}%
+          </span>
+          <span className="tag">
+            已参加 {activity.creator_attended_count || 0} 次
+          </span>
+          {activity.creator_phone_bound && (
+            <span className="tag tag-success">已绑定手机号</span>
+          )}
         </div>
 
         {/* 底部：人数 + 按钮 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span className="tag">
-            <LineIcon name="users" size={14} /> {activity.member_count}/{activity.max_members} 人
+            <LineIcon name="users" size={14} /> {activity.member_count}/{memberLimit} 人
           </span>
+          <CreditDuckBadge levelKey={creatorCreditKey} label={activity.creator_credit_level || '新用户'} compact />
           {!isExpired && (
             <span className={spotsLeft <= 2 ? 'tag tag-accent' : 'tag'}>
               {scarcityText}

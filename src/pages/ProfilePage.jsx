@@ -10,6 +10,18 @@ import { useToast } from '../components/toast-context'
 import { getReliabilitySummary } from '../utils/trust'
 import { CreditDuckBadge, DuckMascot, LineIcon } from '../components/DadaIcons'
 
+const GENDER_OPTIONS = ['男', '女']
+const BEHAVIOR_LABELS = {
+  activity_created: '发起活动',
+  join_requested: '申请加入',
+  join_approved: '通过申请',
+  departure_confirmed: '确认出发',
+  activity_completed: '完成活动',
+  user_reported: '举报用户',
+  activity_reported: '举报活动',
+  user_blocked: '拉黑用户',
+}
+
 export default function ProfilePage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -21,7 +33,14 @@ export default function ProfilePage() {
     email: '',
     avatar_url: '',
     school_name: '',
+    gender: '',
     bio: '',
+    phone_bound: false,
+    trust_badge: '',
+    attended_count: 0,
+    no_show_count: 0,
+    completion_rate: 0,
+    credit_level: '新用户',
   })
   const [reliabilitySummary, setReliabilitySummary] = useState({
     averageRating: 0,
@@ -47,10 +66,13 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [nickname, setNickname] = useState('')
   const [schoolName, setSchoolName] = useState('')
+  const [gender, setGender] = useState('')
   const [bio, setBio] = useState('')
   const [tab, setTab] = useState('published')
   const [myActivities, setMyActivities] = useState([])
   const [joinedActivities, setJoinedActivities] = useState([])
+  const [blockedUsers, setBlockedUsers] = useState([])
+  const [behaviorLogs, setBehaviorLogs] = useState([])
 
   useEffect(() => {
     let active = true
@@ -59,7 +81,7 @@ export default function ProfilePage() {
       const [{ data }, summary] = await Promise.all([
         supabase
           .from('profiles')
-          .select('nickname, avatar_url, school_name, bio')
+          .select('nickname, avatar_url, school_name, gender, bio, phone_bound, trust_badge, attended_count, no_show_count, completion_rate, credit_level')
           .eq('id', user.id)
           .single(),
         getReliabilitySummary(user.id),
@@ -67,17 +89,26 @@ export default function ProfilePage() {
 
       if (!active) return
 
-      const name = data?.nickname || user.email?.split('@')[0] || user.phone || '用户'
+      const name = data?.nickname || user.email?.split('@')[0] || '用户'
       setProfile({
         nickname: name,
-        email: user.email || user.phone || '',
+        email: user.email || (user.phone ? '手机号登录账号' : ''),
         avatar_url: data?.avatar_url || '',
         school_name: data?.school_name || '',
+        gender: data?.gender || '',
         bio: data?.bio || '',
+        phone_bound: Boolean(data?.phone_bound || user.phone),
+        trust_badge: data?.trust_badge || (user.phone ? '已绑定手机号' : ''),
+        attended_count: data?.attended_count || 0,
+        no_show_count: data?.no_show_count || 0,
+        completion_rate: data?.completion_rate || 0,
+        credit_level: data?.credit_level || '新用户',
       })
       setNickname(name)
       setSchoolName(data?.school_name || '')
+      setGender(data?.gender || '')
       setBio(data?.bio || '')
+      if (!data?.gender) setEditing(true)
       setReliabilitySummary(summary)
       setLoading(false)
     }
@@ -127,13 +158,61 @@ export default function ProfilePage() {
     }
   }, [user.id])
 
+  useEffect(() => {
+    let active = true
+
+    async function loadSafetySummary() {
+      const [{ data: blockRows }, { data: logs }] = await Promise.all([
+        supabase
+          .from('blocked_users')
+          .select('blocked_user_id, created_at, reason')
+          .eq('blocker_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('behavior_logs')
+          .select('event_type, created_at, target_activity_id')
+          .eq('actor_user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(6),
+      ])
+
+      let blockedList = []
+      if (blockRows?.length) {
+        const ids = blockRows.map((item) => item.blocked_user_id)
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, nickname, avatar_url')
+          .in('id', ids)
+        const profileMap = new Map((profiles || []).map((item) => [item.id, item]))
+        blockedList = blockRows.map((item) => ({
+          ...item,
+          profile: profileMap.get(item.blocked_user_id),
+        }))
+      }
+
+      if (!active) return
+      setBlockedUsers(blockedList)
+      setBehaviorLogs(logs || [])
+    }
+
+    loadSafetySummary()
+    return () => {
+      active = false
+    }
+  }, [user.id])
+
   async function handleSave() {
     if (!nickname.trim()) return
+    if (!gender) {
+      toast.error('请选择性别')
+      return
+    }
 
     const payload = {
       id: user.id,
       nickname: nickname.trim(),
       school_name: schoolName.trim(),
+      gender,
       bio: bio.trim(),
     }
 
@@ -147,6 +226,7 @@ export default function ProfilePage() {
       ...prev,
       nickname: nickname.trim(),
       school_name: schoolName.trim(),
+      gender,
       bio: bio.trim(),
     }))
     setEditing(false)
@@ -182,8 +262,9 @@ export default function ProfilePage() {
 
   const displayActivities = tab === 'published' ? myActivities : joinedActivities
   const verifiedTags = [
-    user.phone ? '手机已验证' : null,
+    profile.phone_bound || user.phone ? '已绑定手机号' : null,
     user.email_confirmed_at ? '邮箱已验证' : null,
+    profile.gender ? `性别：${profile.gender}` : null,
     profile.school_name ? profile.school_name : null,
   ].filter(Boolean)
 
@@ -229,6 +310,24 @@ export default function ProfilePage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
               <input className="input" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="昵称" />
               <input className="input" value={schoolName} onChange={(e) => setSchoolName(e.target.value)} placeholder="学校或常驻区域，例如：西电 / 曲江" />
+              <div>
+                <div style={{ fontSize: 12, color: '#999', marginBottom: 8, fontWeight: 700, textAlign: 'left' }}>
+                  性别（必填）
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {GENDER_OPTIONS.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={gender === item ? 'btn-accent' : 'btn-ghost'}
+                      style={{ flex: 1 }}
+                      onClick={() => setGender(item)}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <textarea className="input" rows={3} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="简单写下你常约什么，比如：电影、羽毛球、周末 Citywalk" />
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn-accent" style={{ flex: 1 }} onClick={handleSave}>保存</button>
@@ -275,6 +374,9 @@ export default function ProfilePage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <CreditDuckBadge levelKey={reliabilitySummary.creditLevelKey} label={reliabilitySummary.creditLevelLabel} />
             <span className="tag">信用分 {reliabilitySummary.creditScore}</span>
+            <span className="tag">信用等级 {profile.credit_level}</span>
+            <span className="tag">守约率 {Number(profile.completion_rate || 0).toFixed(0)}%</span>
+            <span className="tag">放鸽子 {profile.no_show_count || 0} 次</span>
             {reliabilitySummary.creditLevelKey === 'newbie' && <span className="tag">新人一次只能报 1 个未结束活动</span>}
             {!reliabilitySummary.canCreateActivity && <span className="tag tag-danger">暂时不能发起活动</span>}
             {reliabilitySummary.topTags.length > 0 ? (
@@ -282,6 +384,43 @@ export default function ProfilePage() {
             ) : (
               <span style={{ fontSize: 13, color: '#999' }}>活动通过确认和互评后，会慢慢形成你的靠谱度。</span>
             )}
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, color: '#bbb', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            我的安全记录
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>拉黑列表</div>
+              {blockedUsers.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#999' }}>暂无拉黑用户。</div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {blockedUsers.map((item) => (
+                    <span key={item.blocked_user_id} className="tag">
+                      {item.profile?.nickname || `用户${item.blocked_user_id.slice(0, 6)}`}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>行为记录摘要</div>
+              {behaviorLogs.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#999' }}>暂无行为记录。</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {behaviorLogs.map((item) => (
+                    <div key={`${item.event_type}-${item.created_at}`} style={{ fontSize: 13, color: '#666', display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                      <span>{BEHAVIOR_LABELS[item.event_type] || item.event_type}</span>
+                      <span style={{ color: '#aaa' }}>{formatShortTime(item.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

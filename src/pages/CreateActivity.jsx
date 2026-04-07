@@ -8,8 +8,9 @@ import { useToast } from '../components/toast-context'
 import { getCreditSummary } from '../utils/trust'
 import { CategoryIcon, DuckMascot, LineIcon } from '../components/DadaIcons'
 
-const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
+const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '密室', '剧本杀', '其他']
 const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先', '男生优先']
+const COST_OPTIONS = ['AA', '免费', '我请客', '对方请客', '待定']
 
 const TEMPLATES = [
   {
@@ -44,6 +45,22 @@ const TEMPLATES = [
     max_members: 3,
     meetup_note: '默认安静模式，交流控制在休息时间。',
   },
+  {
+    title: '周末密室组队',
+    description: '找 2-3 个密室搭子，胆量一般也可以，结束就散。',
+    category: '密室',
+    location: '商圈密室店',
+    max_members: 4,
+    meetup_note: '先在店门口集合，费用 AA。',
+  },
+  {
+    title: '剧本杀缺人',
+    description: '想组一局轻推理本，不强社交，认真玩就好。',
+    category: '剧本杀',
+    location: '剧本杀店',
+    max_members: 6,
+    meetup_note: '提前确认本子类型和时长，费用 AA。',
+  },
 ]
 
 const DEFAULT_FORM = {
@@ -52,10 +69,15 @@ const DEFAULT_FORM = {
   location: '',
   start_time: '',
   max_members: 2,
+  participant_limit: 2,
   category: '',
   gender_requirement: '不限',
+  meeting_place_detail: '',
+  public_place_confirm: false,
+  cost_type: 'AA',
   meetup_note: '',
-  safety_notice: '建议首次见面选择公共场所。仅限正常线下搭子活动，禁止骚扰、交易和任何越界行为。',
+  safety_note: '建议首次见面选择公共场所，并提前告知朋友行程。请勿向陌生人透露手机号等隐私信息。',
+  safety_notice: '建议首次见面选择公共场所，并提前告知朋友行程。仅限正常线下搭子活动，禁止骚扰、交易和任何越界行为。',
 }
 
 function getCreditLabelText(label) {
@@ -104,7 +126,9 @@ export default function CreateActivity() {
       location: template.location,
       start_time: '',
       max_members: template.max_members,
+      participant_limit: template.max_members,
       category: template.category,
+      meeting_place_detail: template.meetup_note,
       meetup_note: template.meetup_note,
     }))
     setShowTemplates(false)
@@ -127,6 +151,16 @@ export default function CreateActivity() {
       return
     }
 
+    if (!form.location.trim() || !form.meeting_place_detail.trim()) {
+      toast.error('请填写明确地点和见面点说明')
+      return
+    }
+
+    if (!form.public_place_confirm) {
+      toast.error('请先确认首次见面选择公共场所')
+      return
+    }
+
     setLoading(true)
 
     let coverUrl = null
@@ -139,6 +173,12 @@ export default function CreateActivity() {
       creator_id: user.id,
       start_time: new Date(form.start_time).toISOString(),
       category: form.category,
+      max_members: form.participant_limit,
+      participant_limit: form.participant_limit,
+      meeting_place_detail: form.meeting_place_detail.trim(),
+      meetup_note: form.meeting_place_detail.trim(),
+      safety_note: form.safety_note.trim(),
+      safety_notice: form.safety_note.trim(),
       cover_url: coverUrl,
     }
 
@@ -313,7 +353,11 @@ export default function CreateActivity() {
               min="2"
               max="6"
               value={form.max_members}
-              onChange={(e) => update('max_members', parseInt(e.target.value, 10) || 2)}
+              onChange={(e) => {
+                const nextLimit = parseInt(e.target.value, 10) || 2
+                update('max_members', nextLimit)
+                update('participant_limit', nextLimit)
+              }}
               required
             />
           </div>
@@ -324,7 +368,7 @@ export default function CreateActivity() {
             </label>
             {!form.category && (
               <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>
-                必选：请选择电影、吃饭、运动、学习等一个标签。
+                必选：请选择电影、吃饭、运动、密室、剧本杀等一个标签。
               </div>
             )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -384,18 +428,57 @@ export default function CreateActivity() {
           <textarea
             className="input"
             rows={3}
-            placeholder="集合方式 / 是否 AA / 是否接受迟到 10 分钟 / 要不要自带装备"
-            value={form.meetup_note}
-            onChange={(e) => update('meetup_note', e.target.value)}
+            placeholder="见面点说明（必填）：例如大悦城 5 楼影院门口、店门口前台旁"
+            value={form.meeting_place_detail}
+            onChange={(e) => {
+              update('meeting_place_detail', e.target.value)
+              update('meetup_note', e.target.value)
+            }}
+            required
           />
+
+          <div>
+            <label style={{ fontSize: 12, color: '#999', marginBottom: 8, display: 'block', fontWeight: 600 }}>
+              费用方式
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {COST_OPTIONS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => update('cost_type', item)}
+                  className={form.cost_type === item ? 'btn-accent' : 'btn-ghost'}
+                  style={{ padding: '8px 14px', fontSize: 13 }}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <textarea
             className="input"
             rows={3}
             placeholder="安全提示"
-            value={form.safety_notice}
-            onChange={(e) => update('safety_notice', e.target.value)}
+            value={form.safety_note}
+            onChange={(e) => {
+              update('safety_note', e.target.value)
+              update('safety_notice', e.target.value)
+            }}
           />
+
+          <label className="card" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', background: '#fffaf0' }}>
+            <input
+              type="checkbox"
+              checked={form.public_place_confirm}
+              onChange={(e) => update('public_place_confirm', e.target.checked)}
+              style={{ marginTop: 3 }}
+              required
+            />
+            <span style={{ fontSize: 13, lineHeight: 1.6, color: '#8b5e24' }}>
+              我确认本次活动建议首次见面选择公共场所，并已提醒参与者提前告知朋友行程。平台仅提供信息撮合服务，不对线下个人行为承担担保责任。
+            </span>
+          </label>
 
           <button className="btn-primary" type="submit" disabled={loading || credit?.level_key === 'low_credit'} style={{ marginTop: 8 }}>
             {loading ? '发布中...' : '发布活动'}

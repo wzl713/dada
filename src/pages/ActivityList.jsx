@@ -16,6 +16,8 @@ const CATEGORIES = [
   { value: '自习', label: '自习' },
   { value: '徒步', label: '徒步' },
   { value: '展览', label: '展览' },
+  { value: '密室', label: '密室' },
+  { value: '剧本杀', label: '剧本杀' },
   { value: '其他', label: '其他' },
 ]
 
@@ -81,7 +83,7 @@ export default function ActivityList() {
     ])
 
     const blockedSet = new Set(blockedIds)
-    const filtered = (data || []).filter((item) => !blockedSet.has(item.creator_id))
+    const filtered = (data || []).filter((item) => !blockedSet.has(item.creator_id) && !item.is_hidden_by_block)
 
     const now = new Date()
     const sorted = filtered.sort((a, b) => {
@@ -224,7 +226,7 @@ export default function ActivityList() {
               5分钟内，找到一起出去的人
             </div>
             <div style={{ fontSize: 14, lineHeight: 1.6, color: 'rgba(75,58,40,0.72)' }}>
-              不聊很久，直接看附近谁正在组电影、吃饭、运动和周末局。
+            不聊很久，直接看附近谁正在组电影、吃饭、运动、密室和剧本杀。
             </div>
           </div>
         </div>
@@ -245,7 +247,7 @@ export default function ActivityList() {
             </span>
             <input
               className="input"
-              placeholder="搜索电影、吃饭、羽毛球..."
+              placeholder="搜索电影、吃饭、密室、剧本杀..."
               value={keyword}
               onChange={(e) => handleSearch(e.target.value)}
               style={{ paddingLeft: 36, background: '#f5f5f5', border: 'none' }}
@@ -388,7 +390,7 @@ export default function ActivityList() {
                 onLeave={handleLeave}
                 onDelete={handleDelete}
                 membershipStatus={myMemberships[activity.id] || null}
-                isFull={activity.member_count >= activity.max_members}
+                isFull={activity.member_count >= (activity.display_member_limit || activity.participant_limit || activity.max_members)}
               />
             ))}
           </>

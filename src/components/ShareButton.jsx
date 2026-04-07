@@ -2,13 +2,22 @@ import { useState } from 'react'
 import { useToast } from './toast-context'
 import { LineIcon } from './DadaIcons'
 
-export default function ShareButton({ activity, label = '分享' }) {
+export default function ShareButton({ activity, creator, statusText = '未报名', label = '分享' }) {
   const toast = useToast()
   const [showMenu, setShowMenu] = useState(false)
 
   const shareData = {
     title: activity.title,
-    text: `${activity.title} · ${new Date(activity.start_time).getMonth() + 1}月${new Date(activity.start_time).getDate()}日 · ${activity.location}`,
+    text: [
+      `我准备参加 Dada 活动：${activity.title}`,
+      `时间：${new Date(activity.start_time).getMonth() + 1}月${new Date(activity.start_time).getDate()}日 ${new Date(activity.start_time).getHours().toString().padStart(2, '0')}:${new Date(activity.start_time).getMinutes().toString().padStart(2, '0')}`,
+      `地点：${activity.location}`,
+      `见面点：${activity.meeting_place_detail || activity.meetup_note || '活动详情内确认'}`,
+      `发起人：${creator?.nickname || '新用户'}`,
+      `当前状态：${statusText}`,
+      '安全提醒：首次见面建议选择公共场所，并提前告知朋友行程。',
+      `${window.location.origin}/activity/${activity.id}`,
+    ].join('\n'),
     url: `${window.location.origin}/activity/${activity.id}`,
   }
 
@@ -27,16 +36,16 @@ export default function ShareButton({ activity, label = '分享' }) {
 
   async function handleCopyLink() {
     try {
-      await navigator.clipboard.writeText(shareData.url)
-      toast.success('链接已复制')
+      await navigator.clipboard.writeText(shareData.text)
+      toast.success('行程摘要已复制')
     } catch {
-      const input = document.createElement('input')
-      input.value = shareData.url
+      const input = document.createElement('textarea')
+      input.value = shareData.text
       document.body.appendChild(input)
       input.select()
       document.execCommand('copy')
       document.body.removeChild(input)
-      toast.success('链接已复制')
+      toast.success('行程摘要已复制')
     }
     setShowMenu(false)
   }
@@ -109,7 +118,7 @@ export default function ShareButton({ activity, label = '分享' }) {
               }}
               onClick={handleCopyLink}
             >
-              <LineIcon name="link" size={15} /> 复制链接
+              <LineIcon name="link" size={15} /> 复制行程摘要
             </button>
           </div>
         </>

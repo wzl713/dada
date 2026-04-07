@@ -3,10 +3,12 @@ import { supabase } from '../supabaseClient'
 export async function getBlockedUserIds(userId) {
   const { data } = await supabase
     .from('blocked_users')
-    .select('blocked_user_id')
-    .eq('blocker_id', userId)
+    .select('blocker_id, blocked_user_id')
+    .or(`blocker_id.eq.${userId},blocked_user_id.eq.${userId}`)
 
-  return (data || []).map((item) => item.blocked_user_id)
+  return (data || []).map((item) => (
+    item.blocker_id === userId ? item.blocked_user_id : item.blocker_id
+  ))
 }
 
 export async function getBlockRelationship(currentUserId, otherUserId) {
