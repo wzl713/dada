@@ -12,6 +12,7 @@ import { SkeletonDetail } from '../components/Skeleton'
 import { formatTime, getUserInfo } from '../utils/helpers'
 import { useToast } from '../components/toast-context'
 import { getBlockRelationship } from '../utils/safety'
+import { getCreditSummary } from '../utils/trust'
 
 const DEPARTURE_WINDOW_MS = 60 * 60 * 1000
 
@@ -23,6 +24,7 @@ function isDepartureWindowOpen(startTime) {
 function getMemberBadge(member, activity) {
   if (member.status === 'pending') return { text: '待确认', color: '#f59e0b', bg: '#fffbeb' }
   if (member.status === 'rejected') return { text: '已拒绝', color: '#ef4444', bg: '#fef2f2' }
+  if (member.noShowMarkedAt) return { text: '已标记鸽子', color: '#ef4444', bg: '#fef2f2' }
   if (member.departureConfirmedAt) return { text: '已确认出发', color: '#22c55e', bg: 'var(--success-bg)' }
   if (activity && isDepartureWindowOpen(activity.start_time)) return { text: '可能鸽子', color: '#f59e0b', bg: '#fffbeb' }
   return { text: '已通过', color: '#22c55e', bg: 'var(--success-bg)' }
@@ -54,19 +56,22 @@ export default function ActivityDetail() {
 
       const { data: memberRows } = await supabase
         .from('activity_members')
-        .select('user_id, joined_at, status, approved_at, departure_confirmed_at')
+        .select('user_id, joined_at, status, approved_at, departure_confirmed_at, no_show_marked_at')
         .eq('activity_id', id)
 
       const memberInfos = await Promise.all(
         (memberRows || []).map(async (item) => {
           const info = await getUserInfo(item.user_id)
+          const credit = await getCreditSummary(item.user_id)
           return {
             id: item.user_id,
             ...info,
+            credit,
             joinedAt: item.joined_at,
             status: item.status || 'pending',
             approvedAt: item.approved_at,
             departureConfirmedAt: item.departure_confirmed_at,
+            noShowMarkedAt: item.no_show_marked_at,
           }
         })
       )
@@ -88,19 +93,22 @@ export default function ActivityDetail() {
   async function refreshMembers() {
     const { data: memberRows } = await supabase
       .from('activity_members')
-      .select('user_id, joined_at, status, approved_at, departure_confirmed_at')
+      .select('user_id, joined_at, status, approved_at, departure_confirmed_at, no_show_marked_at')
       .eq('activity_id', id)
 
     const memberInfos = await Promise.all(
       (memberRows || []).map(async (item) => {
         const info = await getUserInfo(item.user_id)
+        const credit = await getCreditSummary(item.user_id)
         return {
           id: item.user_id,
           ...info,
+          credit,
           joinedAt: item.joined_at,
           status: item.status || 'pending',
           approvedAt: item.approved_at,
           departureConfirmedAt: item.departure_confirmed_at,
+          noShowMarkedAt: item.no_show_marked_at,
         }
       })
     )
@@ -115,12 +123,12 @@ export default function ActivityDetail() {
       return
     }
 
-    const { error } = await supabase
-      .from('activity_members')
-      .insert({ activity_id: id, user_id: user.id })
+    const { error } = await supabase.rpc('request_join_activity', {
+      p_activity_id: id,
+    })
 
     if (error) {
-      toast.error(error.message || '加入失败')
+      toast.error(error.message || '申请失败')
       return
     }
 
@@ -188,6 +196,23 @@ export default function ActivityDetail() {
     }
 
     toast.success('已确认出发，发起人会看到你的状态')
+    refreshMembers()
+  }
+
+  async function handleMarkNoShow(memberId) {
+    if (!window.confirm('确定要把这个用户标记为鸽子吗？这会影响 TA 的信用等级。')) return
+
+    const { error } = await supabase.rpc('mark_activity_no_show', {
+      p_activity_id: id,
+      p_user_id: memberId,
+    })
+
+    if (error) {
+      toast.error(error.message || '标记失败')
+      return
+    }
+
+    toast.success('已标记鸽子')
     refreshMembers()
   }
 
@@ -266,7 +291,13 @@ export default function ActivityDetail() {
 
   const isCreator = user.id === activity.creator_id
   const approvedMembers = members.filter((member) => member.status === 'approved')
-  const pendingMembers = members.filter((member) => member.status === 'pending')
+  const pendingMembers = members
+    .filter((member) => member.status === 'pending')
+    .sort((a, b) => {
+      const aPriority = ['high_credit', 'quality_creator'].includes(a.credit?.level_key) ? 1 : 0
+      const bPriority = ['high_credit', 'quality_creator'].includes(b.credit?.level_key) ? 1 : 0
+      return bPriority - aPriority
+    })
   const isFull = approvedMembers.length >= activity.max_members
   const isExpired = new Date(activity.start_time) < new Date()
   const isApproved = myMembership?.status === 'approved'
@@ -274,6 +305,8 @@ export default function ActivityDetail() {
   const canParticipate = isCreator || isApproved
   const departureWindowOpen = isDepartureWindowOpen(activity.start_time)
   const canConfirmDeparture = isApproved && !myMembership?.departure_confirmed_at && !isExpired && departureWindowOpen
+  const spotsLeft = Math.max((activity.max_members || 0) - approvedMembers.length, 0)
+  const scarcityText = spotsLeft === 0 ? '名额已满' : spotsLeft <= 2 ? `仅剩 ${spotsLeft} 个名额` : `还差 ${spotsLeft} 人满员`
 
   return (
     <div>
@@ -319,7 +352,7 @@ export default function ActivityDetail() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, color: '#666', marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>🕐</span><span>{formatTime(activity.start_time)}</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>📍</span><span>{activity.location}</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>👥</span><span>{approvedMembers.length}/{activity.max_members} 人已确认参加</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>👥</span><span>{approvedMembers.length}/{activity.max_members} 人已确认参加 · {scarcityText}</span></div>
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: activity.description ? 16 : 0 }}>
@@ -327,6 +360,7 @@ export default function ActivityDetail() {
               <span className="tag tag-accent">🙋 {activity.gender_requirement}</span>
             )}
             <span className="tag">⚡ 不聊天太久，优先直接见面</span>
+            <span className="tag tag-success">{scarcityText}</span>
           </div>
 
           {activity.description && (
@@ -399,7 +433,12 @@ export default function ActivityDetail() {
                   <Avatar src={member.avatar_url} nickname={member.nickname} size={32} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600 }}>{member.nickname}</div>
-                    <div style={{ fontSize: 11, color: '#999' }}>想参加，等待你确认</div>
+                    <div style={{ fontSize: 11, color: '#999' }}>
+                      {member.credit?.level_label || '🟢 新人'} · 想参加，等待你确认
+                    </div>
+                    {['high_credit', 'quality_creator'].includes(member.credit?.level_key) && (
+                      <div style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginTop: 2 }}>高信用用户，建议优先通过</div>
+                    )}
                   </div>
                   <button type="button" className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => handleMemberStatus(member.id, 'rejected')}>拒绝</button>
                   <button type="button" className="btn-accent" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => handleMemberStatus(member.id, 'approved')}>同意</button>
@@ -431,6 +470,20 @@ export default function ActivityDetail() {
                     <span style={{ fontSize: 11, color: badge.color, background: badge.bg, borderRadius: 999, padding: '3px 8px', fontWeight: 600 }}>
                       {badge.text}
                     </span>
+                    <span style={{ fontSize: 11, color: '#999' }}>{member.credit?.level_label}</span>
+                    {isCreator && isExpired && !member.noShowMarkedAt && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ padding: '4px 8px', fontSize: 11 }}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleMarkNoShow(member.id)
+                        }}
+                      >
+                        标记鸽子
+                      </button>
+                    )}
                   </div>
                 )
               })}

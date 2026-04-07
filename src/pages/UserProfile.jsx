@@ -28,6 +28,15 @@ export default function UserProfile() {
     punctualSampleCount: 0,
     participatedCount: 0,
     reportCount: 0,
+    creditScore: 0,
+    creditLevelKey: 'newbie',
+    creditLevelLabel: '🟢 新人',
+    completedCount: 0,
+    missedConfirmCount: 0,
+    noShowCount: 0,
+    hostedCount: 0,
+    activeApplicationCount: 0,
+    canCreateActivity: true,
   })
   const [blockState, setBlockState] = useState({ blockedByMe: false, blockedMe: false })
   const [loading, setLoading] = useState(true)
@@ -181,6 +190,8 @@ export default function UserProfile() {
               <span className="tag tag-success">守约率 {reliabilitySummary.punctualRate}%</span>
             )}
             <span className="tag">已参加 {reliabilitySummary.participatedCount} 次</span>
+            <span className="tag tag-accent">{reliabilitySummary.creditLevelLabel}</span>
+            <span className="tag">信用分 {reliabilitySummary.creditScore}</span>
           </div>
 
           {!limited && reliabilitySummary.topTags.length > 0 && (

@@ -69,6 +69,12 @@ export default function EditActivity() {
 
   async function handleSubmit(event) {
     event.preventDefault()
+
+    if (!form.category) {
+      toast.error('请先选择一个活动标签')
+      return
+    }
+
     setSaving(true)
 
     const { error } = await supabase
@@ -79,7 +85,7 @@ export default function EditActivity() {
         location: form.location,
         start_time: new Date(form.start_time).toISOString(),
         max_members: form.max_members,
-        category: form.category || '其他',
+        category: form.category,
         gender_requirement: form.gender_requirement || '不限',
         meetup_note: form.meetup_note,
         safety_notice: form.safety_notice,
@@ -162,6 +168,11 @@ export default function EditActivity() {
 
           <div>
             <label style={{ fontSize: 14, color: '#666', marginBottom: 8, display: 'block' }}>活动场景</label>
+            {!form.category && (
+              <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>
+                必选：请选择一个活动标签。
+              </div>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {CATEGORIES.map((item) => (
                 <button

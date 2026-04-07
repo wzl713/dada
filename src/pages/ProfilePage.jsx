@@ -32,6 +32,15 @@ export default function ProfilePage() {
     punctualSampleCount: 0,
     participatedCount: 0,
     reportCount: 0,
+    creditScore: 0,
+    creditLevelKey: 'newbie',
+    creditLevelLabel: '🟢 新人',
+    completedCount: 0,
+    missedConfirmCount: 0,
+    noShowCount: 0,
+    hostedCount: 0,
+    activeApplicationCount: 0,
+    canCreateActivity: true,
   })
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -263,6 +272,10 @@ export default function ProfilePage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span className="tag tag-accent">{reliabilitySummary.creditLevelLabel}</span>
+            <span className="tag">信用分 {reliabilitySummary.creditScore}</span>
+            {reliabilitySummary.creditLevelKey === 'newbie' && <span className="tag">新人一次只能报 1 个未结束活动</span>}
+            {!reliabilitySummary.canCreateActivity && <span className="tag tag-danger">暂时不能发起活动</span>}
             {reliabilitySummary.topTags.length > 0 ? (
               reliabilitySummary.topTags.map((tag) => <span key={tag} className="tag tag-accent">{tag}</span>)
             ) : (

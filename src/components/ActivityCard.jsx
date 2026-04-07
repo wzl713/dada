@@ -9,6 +9,8 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
   const isExpired = new Date(activity.start_time) < new Date()
   const membershipText = membershipStatus === 'approved' ? '✓ 已通过' : membershipStatus === 'rejected' ? '未通过' : '待确认'
   const membershipColor = membershipStatus === 'approved' ? '#22c55e' : membershipStatus === 'rejected' ? '#ef4444' : '#f59e0b'
+  const spotsLeft = Math.max((activity.max_members || 0) - (activity.member_count || 0), 0)
+  const scarcityText = spotsLeft === 0 ? '名额已满' : spotsLeft <= 2 ? `仅剩 ${spotsLeft} 个名额` : `还差 ${spotsLeft} 人满员`
 
   return (
     <div
@@ -85,6 +87,11 @@ export default function ActivityCard({ activity, onJoin, onLeave, onDelete, memb
           <span className="tag">
             👥 {activity.member_count}/{activity.max_members} 人
           </span>
+          {!isExpired && (
+            <span className={spotsLeft <= 2 ? 'tag tag-accent' : 'tag'}>
+              {scarcityText}
+            </span>
+          )}
 
           {isExpired ? null : isCreator ? (
             <button

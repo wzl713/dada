@@ -152,9 +152,9 @@ export default function ActivityList() {
   }
 
   async function handleJoin(activityId) {
-    const { error } = await supabase
-      .from('activity_members')
-      .insert({ activity_id: activityId, user_id: user.id })
+    const { error } = await supabase.rpc('request_join_activity', {
+      p_activity_id: activityId,
+    })
 
     if (error) {
       toast.error(error.message || '申请失败')

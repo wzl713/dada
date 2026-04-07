@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../auth'
 import Navbar from '../components/Navbar'
 import { uploadImage, compressImage } from '../utils/upload'
 import { useToast } from '../components/toast-context'
+import { getCreditSummary } from '../utils/trust'
 
 const CATEGORIES = ['电影', '吃饭', '运动', '自习', '徒步', '展览', '其他']
 const GENDER_OPTIONS = ['不限', '仅限女生', '仅限男生', '女生优先', '男生优先']
@@ -65,7 +66,18 @@ export default function CreateActivity() {
   const [coverFile, setCoverFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [credit, setCredit] = useState(null)
   const fileInputRef = useRef(null)
+
+  useEffect(() => {
+    let active = true
+    getCreditSummary(user.id).then((summary) => {
+      if (active) setCredit(summary)
+    })
+    return () => {
+      active = false
+    }
+  }, [user.id])
 
   async function handleCoverSelect(event) {
     const file = event.target.files?.[0]
@@ -99,6 +111,17 @@ export default function CreateActivity() {
 
   async function handleSubmit(event) {
     event.preventDefault()
+
+    if (!form.category) {
+      toast.error('请先选择一个活动标签')
+      return
+    }
+
+    if (credit?.level_key === 'low_credit') {
+      toast.error('当前账号信用较低，暂时不能发起活动')
+      return
+    }
+
     setLoading(true)
 
     let coverUrl = null
@@ -110,7 +133,7 @@ export default function CreateActivity() {
       ...form,
       creator_id: user.id,
       start_time: new Date(form.start_time).toISOString(),
-      category: form.category || '其他',
+      category: form.category,
       cover_url: coverUrl,
     }
 
@@ -131,6 +154,12 @@ export default function CreateActivity() {
       <Navbar title="发起搭子局" showBack />
 
       <div className="container" style={{ paddingTop: 12, paddingBottom: 90 }}>
+        {credit?.level_key === 'low_credit' && (
+          <div className="card" style={{ background: '#fff7ed', color: '#c2410c', fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+            你的当前信用等级为 {credit.level_label}，暂时不能发起活动。完成已报名活动、减少爽约记录后会恢复。
+          </div>
+        )}
+
         <button
           type="button"
           className="card"
@@ -294,6 +323,11 @@ export default function CreateActivity() {
             <label style={{ fontSize: 12, color: '#999', marginBottom: 8, display: 'block', fontWeight: 600 }}>
               活动场景
             </label>
+            {!form.category && (
+              <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 8 }}>
+                必选：请选择电影、吃饭、运动、学习等一个标签。
+              </div>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {CATEGORIES.map((item) => (
                 <button
@@ -360,7 +394,7 @@ export default function CreateActivity() {
             onChange={(e) => update('safety_notice', e.target.value)}
           />
 
-          <button className="btn-primary" type="submit" disabled={loading} style={{ marginTop: 8 }}>
+          <button className="btn-primary" type="submit" disabled={loading || credit?.level_key === 'low_credit'} style={{ marginTop: 8 }}>
             {loading ? '发布中...' : '发布活动'}
           </button>
 
