@@ -26,7 +26,13 @@ export default function LoginPage() {
     setMessage('')
 
     if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email, password })
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin,
+        },
+      })
       if (error) setMessage(error.message)
       else { toast.success('注册成功！请查收邮件确认'); setMessage('注册成功！请查收邮件确认账号后登录。') }
     } else {
