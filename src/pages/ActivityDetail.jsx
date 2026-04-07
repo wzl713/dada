@@ -312,7 +312,7 @@ export default function ActivityDetail() {
     <div>
       <Navbar title="活动详情" showBack />
 
-      <div className="container" style={{ paddingTop: 12, paddingBottom: 100 }}>
+      <div className="container" style={{ paddingTop: 12, paddingBottom: 190 }}>
         {isExpired && (
           <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '10px 16px', borderRadius: 12, marginBottom: 12, fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
             该活动已结束，可以在下方进行互评
@@ -506,12 +506,12 @@ export default function ActivityDetail() {
         />
 
         {isCreator ? (
-          <div style={{ display: 'flex', gap: 12, position: 'fixed', bottom: 70, left: 16, right: 16, maxWidth: 448, margin: '0 auto' }}>
+          <div className="detail-action-bar" style={{ display: 'flex', gap: 12 }}>
             {!isExpired && <button className="btn-primary" style={{ flex: 1 }} onClick={() => navigate(`/edit/${id}`)}>编辑活动</button>}
             <button className="btn-outline" style={{ flex: isExpired ? 1 : undefined, borderColor: '#ef4444', color: '#ef4444' }} onClick={handleDelete}>删除</button>
           </div>
         ) : !isExpired && (
-          <div style={{ position: 'fixed', bottom: 70, left: 16, right: 16, maxWidth: 448, margin: '0 auto' }}>
+          <div className="detail-action-bar">
             {isApproved ? (
               <div style={{ display: 'flex', gap: 12 }}>
                 <button
